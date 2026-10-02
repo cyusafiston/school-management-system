@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Attendance Report - School Management System</title>
+    <!-- Bootstrap CSS for layout and dropdowns -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 30px; }
+        .container-custom { max-width: 1150px; margin: 0 auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+        h1 { color: #38bdf8; margin-top: 0; font-size: 22px; }
+        h2 { font-size: 18px; color: #cbd5e1; margin-top: 25px; margin-bottom: 15px; }
+        p { color: #94a3b8; }
+        .filter-box { background: #0f172a; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #334155; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        input[type="date"], select { padding: 8px 12px; background: #1e293b; border: 1px solid #475569; color: white; border-radius: 4px; }
+        input[type="date"]:focus, select:focus { border-color: #38bdf8; outline: none; }
+        .filter-btn { background: #38bdf8; color: #0f172a; font-weight: bold; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        .filter-btn:hover { background: #0ea5e9; }
+        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 25px; }
+        .stat-card { background: #0f172a; padding: 15px 10px; border-radius: 8px; border: 1px solid #334155; text-align: center; }
+        .stat-card h3 { margin: 0; font-size: 22px; color: #38bdf8; }
+        .stat-card p { margin: 5px 0 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+        table { width: 100%; border-collapse: collapse; background: #0f172a; border-radius: 8px; overflow: hidden; margin-bottom: 25px; }
+        th, td { padding: 12px 16px; text-align: left; }
+        th { background: #334155; color: #cbd5e1; font-size: 13px; text-transform: uppercase; }
+        td { border-bottom: 1px solid #1e293b; color: #e2e8f0; font-size: 14px; }
+        .badge-status { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; display: inline-block; }
+        .badge-present { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid #22c55e; }
+        .badge-late { background: rgba(234, 179, 8, 0.2); color: #eab308; border: 1px solid #eab308; }
+        .badge-absent { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #38bdf8; text-decoration: none; font-size: 14px; }
+        .back-link:hover { text-decoration: underline; }
+        .btn-inspect { background: #0284c7; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: 500; }
+        .btn-inspect:hover { background: #0369a1; color: white; }
+        .dropdown-menu { background-color: #1e293b; border: 1px solid #475569; }
+        .dropdown-item { color: #f8fafc; font-size: 14px; }
+        .dropdown-item:hover { background-color: #334155; color: #38bdf8; }
+    </style>
+</head>
+<body>
+    <div class="container-custom">
+        <!-- Top header area -->
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div>
+                <a href="{% url 'role_redirect' %}" class="back-link mb-2">&larr; Back to Dashboard</a>
+                <h1>School-Wide Daily Attendance Report</h1>
+                <p class="mb-0">Viewing attendance for <strong style="color: #38bdf8;">{{ formatted_date_display }}</strong></p>
+            </div>
+            
+            <div class="dropdown">
+                <button class="btn btn-outline-info dropdown-toggle" type="button" id="adminAttendanceDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="color: #38bdf8; border-color: #38bdf8;">
+                    Attendance Reports Module
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="adminAttendanceDropdown">
+                    <li><a class="dropdown-item" href="{% url 'admin_attendance_report' %}">Daily Class Attendance</a></li>
+                    <li><a class="dropdown-item" href="{% url 'admin_subject_attendance_report' %}">Subject Attendance</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Filter Form -->
+        <form method="GET" class="filter-box">
+            <div>
+                <label for="date" style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Date:</label>
+                <input type="date" id="date" name="date" value="{{ selected_date }}">
+            </div>
+            <div>
+                <label for="class_id" style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Class Stream:</label>
+                <select id="class_id" name="class_id">
+                    <option value="">All Classes</option>
+                    {% for c in classes %}
+                    <option value="{{ c.id }}" {% if selected_class_id == c.id|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="align-self: flex-end;">
+                <button type="submit" class="filter-btn">Filter Report</button>
+            </div>
+        </form>
+
+        <!-- Quick Summary Cards (Including Total School Students) -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>{{ total_school_students }}</h3>
+                <p>Total Students</p>
+            </div>
+            <div class="stat-card">
+                <h3>{{ total_records }}</h3>
+                <p>Marked Records</p>
+            </div>
+            <div class="stat-card">
+                <h3 style="color: #22c55e;">{{ present_count }}</h3>
+                <p>Total Present</p>
+            </div>
+            <div class="stat-card">
+                <h3 style="color: #eab308;">{{ late_count }}</h3>
+                <p>Total Late</p>
+            </div>
+            <div class="stat-card">
+                <h3 style="color: #ef4444;">{{ absent_count }}</h3>
+                <p>Total Absent</p>
+            </div>
+        </div>
+
+        <!-- Class Stream Overview Table -->
+        <h2>Class Stream Overview</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Class Stream</th>
+                    <th style="text-align: center;">Total Students</th>
+                    <th>Status / Submission</th>
+                    <th style="text-align: center;">Present</th>
+                    <th style="text-align: center;">Late</th>
+                    <th style="text-align: center;">Absent</th>
+                    <th style="text-align: center;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for summary in class_summaries %}
+                <tr>
+                    <td><strong>{{ summary.class_obj.name }}</strong></td>
+                    <td style="text-align: center; color: #38bdf8; font-weight: bold;">{{ summary.total_students }}</td>
+                    <td>
+                        {% if summary.is_submitted %}
+                            <span class="badge bg-success" style="font-size: 11px;">Submitted by {{ summary.submitted_by|default:"Teacher" }}</span>
+                        {% else %}
+                            <span class="badge bg-secondary" style="font-size: 11px;">Not Submitted</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center; color: #22c55e; font-weight: bold;">{{ summary.present_count }}</td>
+                    <td style="text-align: center; color: #eab308; font-weight: bold;">{{ summary.late_count }}</td>
+                    <td style="text-align: center; color: #ef4444; font-weight: bold;">{{ summary.absent_count }}</td>
+                    <td style="text-align: center;">
+                        <a href="?date={{ selected_date }}&class_id={{ summary.class_obj.id }}" class="btn-inspect">View Details</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Detailed Student Records Table -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2>Detailed Student Records {% if selected_class_id %}(Filtered){% endif %}</h2>
+            {% if selected_class_id %}
+                <a href="?date={{ selected_date }}" style="color: #38bdf8; font-size: 13px; text-decoration: none;">&larr; Show All Classes</a>
+            {% endif %}
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Student Name</th>
+                    <th>Reg Number</th>
+                    <th>Class Stream</th>
+                    <th>Submitted By</th>
+                    <th style="text-align: center;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in attendance_records %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td><strong>{{ record.student.first_name }} {{ record.student.last_name }}</strong></td>
+                    <td style="color: #94a3b8; font-size: 13px;">{{ record.student.registration_number }}</td>
+                    <td>{{ record.current_class.name }}</td>
+                    <td style="color: #94a3b8; font-size: 13px;">{{ record.submitted_by.username }}</td>
+                    <td style="text-align: center;">
+                        <span class="badge-status {% if record.status == 'Present' %}badge-present{% elif record.status == 'Late' %}badge-late{% else %}badge-absent{% endif %}">
+                            {{ record.status }}
+                        </span>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 30px; color: #64748b;">No attendance records found for this date/class combination.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

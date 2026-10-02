@@ -1,0 +1,107 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Financial Statement - {{ student }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; margin: 40px; }
+        .header { text-align: center; border-bottom: 2px solid #003366; padding-bottom: 15px; margin-bottom: 25px; }
+        .header h2 { margin: 0; color: #003366; }
+        .student-info { margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 5px; }
+        .student-info table { width: 100%; border-collapse: collapse; }
+        .student-info td { padding: 5px; }
+        table.ledger { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        table.ledger th, table.ledger td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+        table.ledger th { background-color: #003366; color: white; }
+        table.ledger td.amount { text-align: right; font-weight: 600; }
+        .voided { background-color: #fff5f5; color: #c53030; text-decoration: line-through; }
+        .summary-box { margin-top: 30px; float: right; width: 300px; background: #f1f5f9; padding: 15px; border-radius: 5px; }
+        .summary-box table { width: 100%; }
+        .summary-box td { padding: 6px; }
+        .summary-box td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+        .print-btn { margin-top: 20px; padding: 10px 20px; background: #003366; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        @media print { .print-btn { display: none; } }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>SCHOOL MANAGEMENT SYSTEM</h2>
+        <p>Official Student Financial Statement & Ledger History</p>
+    </div>
+
+    <div class="student-info">
+        <table>
+            <tr>
+                <td><strong>Student Name:</strong> {{ student.first_name }} {{ student.last_name }}</td>
+                <td><strong>Registration No:</strong> {{ student.registration_number }}</td>
+            </tr>
+            <tr>
+                <td><strong>Current Class:</strong> {{ student.current_class|default:"N/A" }}</td>
+                <td><strong>Statement Date:</strong> {% now "d/m/Y" %}</td>
+            </tr>
+        </table>
+    </div>
+
+    <h3>Transaction Ledger History</h3>
+    <table class="ledger">
+        <thead>
+            <tr>
+                <th>Receipt No</th>
+                <th>Date</th>
+                <th>Term</th>
+                <th>Method</th>
+                <th>Reference</th>
+                <th>Amount Paid</th>
+                <th>Status / Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for payment in payments %}
+            <tr class="{% if payment.is_voided %}voided{% endif %}">
+                <td>{{ payment.receipt_number|default:"N/A" }}</td>
+                <td>{{ payment.date_paid|date:"d/m/Y H:i" }}</td>
+                <td>{{ payment.term }}</td>
+                <td>{{ payment.payment_method }}</td>
+                <td>{{ payment.reference_number|default:"N/A" }}</td>
+                <td class="amount">{{ payment.amount_paid|floatformat:0|intcomma }} RWF</td>
+                <td>
+                    {% if payment.is_voided %}
+                        <strong>VOIDED</strong> (Reason: {{ payment.void_reason }})
+                    {% else %}
+                        Active
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" style="text-align: center; color: #777;">No payment transactions recorded yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="summary-box">
+        <table>
+            <tr>
+                <td><strong>Total Expected:</strong></td>
+                <td class="amount">{{ total_expected|floatformat:0|intcomma }} RWF</td>
+            </tr>
+            <tr>
+                <td><strong>Total Paid (Valid):</strong></td>
+                <td class="amount" style="color: green;">{{ total_paid|floatformat:0|intcomma }} RWF</td>
+            </tr>
+            <tr>
+                <td><strong>Outstanding Balance:</strong></td>
+                <td class="amount" style="color: red;"><strong>{{ outstanding_balance|floatformat:0|intcomma }} RWF</strong></td>
+            </tr>
+        </table>
+    </div>
+
+    <div style="clear: both;"></div>
+
+    <button class="print-btn" onclick="window.print()">Print / Export Statement</button>
+
+</body>
+</html>

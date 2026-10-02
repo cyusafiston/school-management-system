@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Login | School Management System</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome -->
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    >
+
+    <style>
+        body {
+            font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        }
+
+        .login-bg {
+            background:
+                radial-gradient(circle at 15% 20%, rgba(14, 165, 233, 0.12), transparent 28%),
+                radial-gradient(circle at 85% 80%, rgba(99, 102, 241, 0.12), transparent 30%),
+                #0f172a;
+        }
+
+        .login-card {
+            background: rgba(30, 41, 59, 0.94);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .input-wrapper:focus-within {
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+        }
+
+        .login-button {
+            background: linear-gradient(135deg, #0284c7, #0ea5e9);
+        }
+
+        .login-button:hover {
+            background: linear-gradient(135deg, #0369a1, #0284c7);
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px rgba(14, 165, 233, 0.20);
+        }
+
+        .login-button:active {
+            transform: translateY(0);
+        }
+
+        .login-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.75;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .password-toggle {
+            color: #64748b;
+            transition: color 0.2s ease;
+        }
+
+        .password-toggle:hover {
+            color: #38bdf8;
+        }
+
+        .logo-glow {
+            box-shadow:
+                0 0 0 6px rgba(14, 165, 233, 0.08),
+                0 10px 30px rgba(14, 165, 233, 0.12);
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-up {
+            animation: fadeUp 0.5s ease-out;
+        }
+    </style>
+</head>
+
+<body class="login-bg min-h-screen text-slate-100">
+
+    <main class="min-h-screen flex items-center justify-center px-4 py-8">
+
+        <div class="w-full max-w-md animate-fade-up">
+
+            <!-- Login Card -->
+            <div class="login-card border border-slate-700/70 rounded-2xl shadow-2xl overflow-hidden">
+
+                <!-- Header -->
+                <div class="px-7 sm:px-9 pt-9 pb-6 text-center">
+
+                    <!-- Logo / System Icon -->
+                    <div
+                        class="logo-glow mx-auto mb-5 w-16 h-16 rounded-2xl
+                               bg-sky-500/10 border border-sky-400/20
+                               flex items-center justify-center"
+                    >
+                        <i class="fa-solid fa-school text-3xl text-sky-400"></i>
+                    </div>
+
+                    <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                        School Management
+                    </h1>
+
+                    <p class="text-lg font-semibold text-sky-400 mt-1">
+                        System
+                    </p>
+
+                    <p class="text-sm text-slate-400 mt-3">
+                        Welcome back. Sign in to continue.
+                    </p>
+                </div>
+
+
+                <!-- Login Form -->
+                <div class="px-7 sm:px-9 pb-9">
+
+                    {% if form.non_field_errors %}
+                        <div
+                            class="mb-5 rounded-xl border border-red-500/30
+                                   bg-red-500/10 px-4 py-3 text-sm text-red-300"
+                        >
+                            <div class="flex items-start gap-3">
+                                <i class="fa-solid fa-circle-exclamation mt-0.5"></i>
+
+                                <div>
+                                    {% for error in form.non_field_errors %}
+                                        <p>{{ error }}</p>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+
+                    <form
+                        method="post"
+                        action="{% url 'login' %}"
+                        id="loginForm"
+                    >
+
+                        {% csrf_token %}
+
+
+                        <!-- Username -->
+                        <div class="mb-5">
+
+                            <label
+                                for="{{ form.username.id_for_label }}"
+                                class="block text-sm font-medium text-slate-300 mb-2"
+                            >
+                                Username
+                            </label>
+
+                            <div
+                                class="input-wrapper flex items-center
+                                       bg-slate-950/70
+                                       border border-slate-600
+                                       rounded-xl
+                                       transition-all duration-200"
+                            >
+
+                                <div class="pl-4 text-slate-500">
+                                    <i class="fa-solid fa-user"></i>
+                                </div>
+
+                                <input
+                                    type="text"
+                                    name="{{ form.username.html_name }}"
+                                    id="{{ form.username.id_for_label }}"
+                                    value="{{ form.username.value|default:'' }}"
+                                    autocomplete="username"
+                                    required
+                                    autofocus
+                                    placeholder="Enter your username"
+                                    class="w-full bg-transparent border-0
+                                           outline-none
+                                           px-3 py-3.5
+                                           text-white
+                                           placeholder-slate-600"
+                                >
+
+                            </div>
+
+                            {% if form.username.errors %}
+                                <div class="mt-2 text-xs text-red-400">
+                                    {% for error in form.username.errors %}
+                                        <p>{{ error }}</p>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Password -->
+                        <div class="mb-6">
+
+                                                        <div class="flex items-center justify-between mb-2">
+                                <label
+                                    for="{{ form.password.id_for_label }}"
+                                    class="block text-sm font-medium text-slate-300"
+                                >
+                                    Password
+                                </label>
+                                <a href="{% url 'password_reset' %}" class="text-xs text-sky-400 hover:underline">
+                                    Forgot password?
+                                </a>
+                            </div>
+
+                            <div
+                                class="input-wrapper flex items-center
+                                       bg-slate-950/70
+                                       border border-slate-600
+                                       rounded-xl
+                                       transition-all duration-200"
+                            >
+
+                                <div class="pl-4 text-slate-500">
+                                    <i class="fa-solid fa-lock"></i>
+                                </div>
+
+                                <input
+                                    type="password"
+                                    name="{{ form.password.html_name }}"
+                                    id="{{ form.password.id_for_label }}"
+                                    autocomplete="current-password"
+                                    required
+                                    placeholder="Enter your password"
+                                    class="w-full bg-transparent border-0
+                                           outline-none
+                                           px-3 py-3.5
+                                           text-white
+                                           placeholder-slate-600"
+                                >
+
+                                <!-- Show / Hide Password -->
+                                <button
+                                    type="button"
+                                    id="togglePassword"
+                                    class="password-toggle px-4 py-3.5
+                                           focus:outline-none"
+                                    aria-label="Show password"
+                                    title="Show password"
+                                >
+                                    <i
+                                        id="passwordIcon"
+                                        class="fa-solid fa-eye"
+                                    ></i>
+                                </button>
+
+                            </div>
+
+                            {% if form.password.errors %}
+                                <div class="mt-2 text-xs text-red-400">
+                                    {% for error in form.password.errors %}
+                                        <p>{{ error }}</p>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Remember Me -->
+                        <div class="flex items-center justify-between mb-6">
+
+                            <label
+                                class="flex items-center gap-2
+                                       text-sm text-slate-400
+                                       cursor-pointer select-none"
+                            >
+                                <input
+                                    type="checkbox"
+                                    name="remember_me"
+                                    class="w-4 h-4 rounded
+                                           border-slate-600
+                                           bg-slate-900
+                                           text-sky-500
+                                           focus:ring-sky-500
+                                           focus:ring-offset-slate-900"
+                                >
+
+                                <span>Remember me</span>
+                            </label>
+
+                        </div>
+
+
+                        <!-- Login Button -->
+                        <button
+                            type="submit"
+                            id="loginButton"
+                            class="login-button w-full
+                                   text-white font-semibold
+                                   py-3.5 px-5
+                                   rounded-xl
+                                   transition-all duration-200
+                                   flex items-center justify-center gap-2"
+                        >
+
+                            <span id="loginButtonText">
+                                Sign In
+                            </span>
+
+                            <i
+                                id="loginButtonIcon"
+                                class="fa-solid fa-arrow-right"
+                            ></i>
+
+                        </button>
+
+                    </form>
+
+
+                    <!-- Help -->
+                    <div class="mt-7 text-center">
+
+                        <p class="text-xs text-slate-500">
+                            Having trouble accessing your account?
+                        </p>
+
+                        <p class="text-xs text-slate-400 mt-1">
+                            Contact your school administrator.
+                        </p>
+
+                    </div>
+
+                </div>
+            </div>
+
+
+            <!-- Footer -->
+             
+            <div class="text-center mt-6">
+
+                <p class="text-xs text-slate-600">
+                    &copy; {% now "Y" %} School Management System
+                </p>
+
+                <p class="text-[11px] text-slate-700 mt-1">
+                    Secure access portal
+                </p>
+
+            </div>
+           
+
+        </div>
+
+    </main>
+
+
+    <!-- Password Toggle + Login Loading -->
+    <script>
+
+        // ==============================
+        // PASSWORD SHOW / HIDE
+        // ==============================
+
+        const passwordInput = document.getElementById(
+            "{{ form.password.id_for_label }}"
+        );
+
+        const togglePassword = document.getElementById(
+            "togglePassword"
+        );
+
+        const passwordIcon = document.getElementById(
+            "passwordIcon"
+        );
+
+        togglePassword.addEventListener("click", function () {
+
+            const isPassword =
+                passwordInput.getAttribute("type") === "password";
+
+            if (isPassword) {
+
+                passwordInput.setAttribute("type", "text");
+
+                passwordIcon.classList.remove("fa-eye");
+                passwordIcon.classList.add("fa-eye-slash");
+
+                togglePassword.setAttribute(
+                    "aria-label",
+                    "Hide password"
+                );
+
+                togglePassword.setAttribute(
+                    "title",
+                    "Hide password"
+                );
+
+            } else {
+
+                passwordInput.setAttribute("type", "password");
+
+                passwordIcon.classList.remove("fa-eye-slash");
+                passwordIcon.classList.add("fa-eye");
+
+                togglePassword.setAttribute(
+                    "aria-label",
+                    "Show password"
+                );
+
+                togglePassword.setAttribute(
+                    "title",
+                    "Show password"
+                );
+            }
+        });
+
+
+        // ==============================
+        // LOGIN BUTTON LOADING STATE
+        // ==============================
+
+        const loginForm = document.getElementById("loginForm");
+
+        const loginButton = document.getElementById("loginButton");
+
+        const loginButtonText =
+            document.getElementById("loginButtonText");
+
+        const loginButtonIcon =
+            document.getElementById("loginButtonIcon");
+
+
+        loginForm.addEventListener("submit", function () {
+
+            loginButton.disabled = true;
+
+            loginButtonText.textContent = "Signing in...";
+
+            loginButtonIcon.classList.remove(
+                "fa-arrow-right"
+            );
+
+            loginButtonIcon.classList.add(
+                "fa-spinner",
+                "fa-spin"
+            );
+        });
+
+    </script>
+
+</body>
+</html>

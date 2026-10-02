@@ -1,0 +1,121 @@
+{% extends 'core/base_teacher.html' %}
+{% block title %}Enter Grades - {{ assignment.current_class.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Enter Grades: {{ assignment.subject.name }}</h1>
+            <p class="text-slate-400 text-sm">Class Stream: {{ assignment.current_class.name }} | Term: {{ assignment.term.name }}</p>
+        </div>
+        <div class="flex items-center gap-4">
+            <button type="button" onclick="fillZeros()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg font-medium text-xs transition-colors border border-slate-700">
+                <i class="fas fa-magic mr-1 text-sky-400"></i> Fill Blanks with 0
+            </button>
+            <a href="{% url 'teacher_grades_list' %}" class="text-sm text-slate-400 hover:text-white no-underline">
+                <i class="fas fa-arrow-left mr-1"></i> Back to List
+            </a>
+        </div>
+    </div>
+
+    <!-- Success Message Banner -->
+    {% if messages %}
+    <div class="mb-6 space-y-2">
+        {% for message in messages %}
+        <div class="p-4 rounded-lg bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-sm flex items-center shadow-lg">
+            <i class="fas fa-check-circle mr-2 text-emerald-400"></i> {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="POST" class="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+        {% csrf_token %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-800 text-xs text-slate-400 uppercase bg-slate-900/40">
+                        <th class="p-4">Student Name</th>
+                        <th class="p-4">Reg Number</th>
+                        <th class="p-4 w-40">CAT (Max 50)</th>
+                        <th class="p-4 w-40">Exam (Max 50)</th>
+                        <th class="p-4 w-40 text-sky-400">Total (Max 100)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800 text-sm">
+                    {% for student in students %}
+                    {% with g=student.grade %}
+                    <tr class="hover:bg-slate-900/30 transition-colors">
+                        <td class="p-4 font-semibold text-white">{{ student.user.get_full_name|default:student.user.username }}</td>
+                        <td class="p-4 text-slate-400 font-mono text-xs">{{ student.registration_number }}</td>
+                        <td class="p-4">
+                            <input type="number" step="0.01" min="0" max="50" name="cat_{{ student.id }}" value="{{ g.cat_marks|default:'' }}" oninput="calculateTotal('{{ student.id }}')" class="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-center text-base font-semibold focus:outline-none focus:border-sky-500 shadow-inner">
+                        </td>
+                        <td class="p-4">
+                            <input type="number" step="0.01" min="0" max="50" name="exam_{{ student.id }}" value="{{ g.exam_marks|default:'' }}" oninput="calculateTotal('{{ student.id }}')" class="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-center text-base font-semibold focus:outline-none focus:border-sky-500 shadow-inner">
+                        </td>
+                        <td class="p-4 font-bold text-sky-400 font-mono text-base" id="total_{{ student.id }}">-</td>
+                    </tr>
+                    {% endwith %}
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="p-8 text-center text-slate-500">No students enrolled in this class stream.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if students %}
+        <div class="p-4 bg-slate-900/50 border-t border-slate-800 flex justify-end">
+            <button type="submit" class="bg-sky-600 hover:bg-sky-500 text-white px-6 py-2 rounded-lg font-medium text-sm transition-colors shadow">
+                Save All Grades
+            </button>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<script>
+function calculateTotal(studentId) {
+    const catInput = document.querySelector(`input[name="cat_${studentId}"]`);
+    const examInput = document.querySelector(`input[name="exam_${studentId}"]`);
+    const totalCell = document.getElementById(`total_${studentId}`);
+    
+    let cat = parseFloat(catInput.value) || 0;
+    let exam = parseFloat(examInput.value) || 0;
+    
+    if (cat > 50) {
+        catInput.classList.add('border-red-500', 'text-red-400');
+    } else {
+        catInput.classList.remove('border-red-500', 'text-red-400');
+    }
+
+    if (exam > 50) {
+        examInput.classList.add('border-red-500', 'text-red-400');
+    } else {
+        examInput.classList.remove('border-red-500', 'text-red-400');
+    }
+
+    let total = cat + exam;
+    totalCell.textContent = total.toFixed(2);
+}
+
+function fillZeros() {
+    const inputs = document.querySelectorAll('input[type="number"]');
+    inputs.forEach(input => {
+        if (!input.value) {
+            input.value = '0';
+            const nameAttr = input.getAttribute('name');
+            const studentId = nameAttr.split('_')[1];
+            calculateTotal(studentId);
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    {% for student in students %}
+    calculateTotal('{{ student.id }}');
+    {% endfor %}
+});
+</script>
+{% endblock %}

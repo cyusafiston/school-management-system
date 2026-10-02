@@ -1,0 +1,85 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ class_stream.name }} - Collection Details | SMS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="flex h-screen overflow-hidden">
+        {% include 'accountant/components/sidebar.html' %}
+
+        <div class="flex flex-col flex-1 h-full overflow-y-auto">
+            <header class="bg-white shadow-sm px-8 py-4 flex justify-between items-center border-b">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800">{{ class_stream.name }} - Collection Breakdown</h1>
+                    <p class="text-xs text-gray-500">Detailed student-by-student financial status</p>
+                </div>
+                <a href="{% url 'class_collections_report' %}" class="text-sm bg-gray-100 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-200 transition">Back to Report</a>
+            </header>
+
+            <main class="p-8 max-w-7xl w-full mx-auto flex-grow">
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
+                        <p class="text-sm font-medium text-gray-500">Total Expected</p>
+                        <p class="text-2xl font-bold text-gray-800 mt-1">{{ class_total_expected|floatformat:0|intcomma }} RWF</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
+                        <p class="text-sm font-medium text-gray-500">Total Collected</p>
+                        <p class="text-2xl font-bold text-green-600 mt-1">{{ class_total_collected|floatformat:0|intcomma }} RWF</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow border-l-4 border-red-500">
+                        <p class="text-sm font-medium text-gray-500">Total Balance Due</p>
+                        <p class="text-2xl font-bold text-red-600 mt-1">{{ class_balance|floatformat:0|intcomma }} RWF</p>
+                    </div>
+                </div>
+
+                <!-- Students Table -->
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="p-6 border-b">
+                        <h2 class="text-xl font-semibold text-gray-800">Students in {{ class_stream.name }}</h2>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registration No.</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Fee</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid Amount</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Transactions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for item in student_details %}
+                                <tr>
+                                    <!-- Clickable Registration Number routing to student personal & parent profile -->
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <a href="{% url 'accountant_student_profile' item.student.id %}" class="text-blue-600 hover:text-blue-900 hover:underline">
+                                            {{ item.student.registration_number }}
+                                        </a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800 font-semibold">{{ item.student.user.get_full_name|default:item.student }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ item.expected|floatformat:0|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">{{ item.collected|floatformat:0|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">{{ item.balance|floatformat:0|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">{{ item.payments_count }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500">No students found in this class stream.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

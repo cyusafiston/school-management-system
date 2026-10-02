@@ -1,0 +1,67 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Outstanding Debtors | SMS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="min-h-screen flex flex-col">
+        <!-- Top Nav -->
+        <header class="bg-blue-900 text-white shadow">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                <h1 class="text-xl font-bold">Accountant Portal — Outstanding Debtors</h1>
+                <a href="{% url 'accountant_dashboard' %}" class="bg-blue-800 text-sm px-3 py-1 rounded hover:bg-blue-700 transition">Back to Dashboard</a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 py-8 flex-grow w-full">
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="p-6 border-b flex justify-between items-center">
+                    <h2 class="text-xl font-semibold text-gray-800">Students with Unpaid Balances</h2>
+                    {% if current_term %}
+                    <span class="text-sm bg-gray-200 px-3 py-1 rounded text-gray-700 font-medium">Term: {{ current_term.name }}</span>
+                    {% endif %}
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Fees</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Paid Amount</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Due</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for item in debtors %}
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    <a href="{% url 'student_financial_profile' item.student.id %}" class="text-blue-600 hover:underline hover:text-blue-900">
+                                        {{ item.student }}
+                                    </a>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ item.class.name }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-700">{{ item.expected|floatformat:0|intcomma }} RWF</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 font-medium">{{ item.paid|floatformat:0|intcomma }} RWF</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-bold">{{ item.balance|floatformat:0|intcomma }} RWF</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-8 text-center text-sm text-gray-500">
+                                    No debtors found! All enrolled students have fully cleared their fees for this term. 🎉
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

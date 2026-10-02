@@ -1,0 +1,135 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ student }} - Financial Profile | SMS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="min-h-screen flex flex-col">
+        <!-- Top Nav -->
+        <header class="bg-blue-900 text-white shadow">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                <h1 class="text-xl font-bold">Accountant Portal — Student Financial Profile</h1>
+                <div class="space-x-3">
+                    <a href="{% url 'debtors_list' %}" class="bg-blue-800 text-sm px-3 py-1 rounded hover:bg-blue-700 transition">Debtors List</a>
+                    <a href="{% url 'accountant_dashboard' %}" class="bg-blue-800 text-sm px-3 py-1 rounded hover:bg-blue-700 transition">Dashboard</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 py-8 flex-grow w-full space-y-6">
+            <!-- Student Header Card -->
+            <div class="bg-white rounded-lg shadow p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900">{{ student }}</h2>
+                    <p class="text-sm text-gray-500">Registration No: <span class="font-medium text-gray-700">{{ student.registration_number }}</span></p>
+                </div>
+                <div class="flex gap-4 text-sm bg-gray-50 p-3 rounded-lg border">
+                    <div>
+                        <span class="text-gray-500 block">Class Stream:</span>
+                        <span class="font-semibold text-gray-800">{{ enrollment.class_stream.name|default:"Not Assigned" }}</span>
+                    </div>
+                    <div class="border-l pl-4">
+                        <span class="text-gray-500 block">Active Term:</span>
+                        <span class="font-semibold text-gray-800">{{ term.name|default:"N/A" }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Financial Summary Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white p-6 rounded-lg shadow border-l-4 border-blue-600">
+                    <p class="text-sm text-gray-500 font-medium">Expected Fees (Term)</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ expected|floatformat:0|intcomma }} RWF</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow border-l-4 border-green-600">
+                    <p class="text-sm text-gray-500 font-medium">Total Paid (Term)</p>
+                    <p class="text-2xl font-bold text-green-600 mt-1">{{ paid|floatformat:0|intcomma }} RWF</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow border-l-4 border-red-600">
+                    <p class="text-sm text-gray-500 font-medium">Outstanding Balance</p>
+                    <p class="text-2xl font-bold text-red-600 mt-1">{{ balance|floatformat:0|intcomma }} RWF</p>
+                </div>
+            </div>
+
+            <!-- Transaction History Ledger -->
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="p-6 border-b flex justify-between items-center">
+                    <h3 class="text-lg font-semibold text-gray-800">Payment Transaction History</h3>
+                    <a href="{% url 'record_payment' %}" class="bg-blue-600 text-white text-sm px-4 py-2 rounded hover:bg-blue-700 transition">Record New Payment</a>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Receipt No</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Term / Year</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method & Reference</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Paid</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for payment in payments %}
+                            <tr class="{% if payment.is_voided %}bg-red-50 text-gray-400{% endif %}">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold {% if payment.is_voided %}line-through text-red-400{% else %}text-blue-900{% endif %}">
+                                    {{ payment.receipt_number|default:"N/A" }}
+                                    {% if payment.is_voided %}
+                                        <span class="block text-xs font-normal text-red-600 uppercase">Voided</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm {% if payment.is_voided %}line-through{% else %}text-gray-600{% endif %}">{{ payment.date_paid|date:"d/m/Y H:i" }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm {% if payment.is_voided %}line-through{% else %}text-gray-600{% endif %}">{{ payment.term.name }} ({{ payment.academic_year.name }})</td>
+                                <td class="px-6 py-4 text-sm {% if payment.is_voided %}line-through{% else %}text-gray-600{% endif %}">
+                                    <span class="font-medium text-gray-800">{{ payment.get_payment_method_display|default:payment.payment_method }}</span>
+                                    {% if payment.reference_number %}
+                                    <span class="block text-xs text-gray-400">Ref: {{ payment.reference_number }}</span>
+                                    {% endif %}
+                                    
+                                    <!-- Audit trail details displayed right under the transaction details -->
+                                    {% if payment.is_voided %}
+                                        <div class="mt-1 text-xs text-gray-500 space-y-0.5 font-normal">
+                                            {% if payment.void_reason %}
+                                                <p class="text-red-600 italic"><strong>Reason:</strong> {{ payment.void_reason }}</p>
+                                            {% endif %}
+                                            {% if payment.voided_by %}
+                                                <p><strong>Voided By:</strong> {{ payment.voided_by.username }}</p>
+                                            {% endif %}
+                                            {% if payment.voided_at %}
+                                                <p><strong>Voided At:</strong> {{ payment.voided_at|date:"d/m/Y H:i" }}</p>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-right {% if payment.is_voided %}line-through text-red-400{% else %}text-green-600 font-semibold{% endif %}">{{ payment.amount_paid|floatformat:0|intcomma }} RWF</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium space-x-2">
+                                    <a href="{% url 'payment_receipt' payment.id %}" target="_blank" class="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1 rounded transition inline-block">View Receipt</a>
+                                    
+                                    {% if not payment.is_voided %}
+                                        <a href="{% url 'void_payment' payment.id %}" class="text-red-600 hover:text-red-900 bg-red-50 px-3 py-1 rounded transition inline-block">Void</a>
+                                    {% else %}
+                                        <span class="text-xs text-gray-400 italic">Reversed</span>
+                                    {% endif %}
+                                    <a href="{% url 'student_financial_statement' student.id %}" class="btn btn-secondary" target="_blank">Print Financial Statement</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500">
+                                    No payment transactions recorded for this student yet.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Class Collections Report | SMS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="flex h-screen overflow-hidden">
+        {% include 'accountant/components/sidebar.html' %}
+
+        <div class="flex flex-col flex-1 h-full overflow-y-auto">
+            <header class="bg-white shadow-sm px-8 py-4 flex justify-between items-center border-b">
+                <h1 class="text-xl font-bold text-gray-800">Class Collections Report</h1>
+                <a href="{% url 'accountant_dashboard' %}" class="text-sm bg-gray-100 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-200 transition">Back to Dashboard</a>
+            </header>
+
+            <main class="p-8 max-w-7xl w-full mx-auto flex-grow">
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="p-6 border-b">
+                        <h2 class="text-xl font-semibold text-gray-800">Collections & Expected Breakdown by Class</h2>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Name</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Fees</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Collected Fees</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Due</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Collection Rate</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Transactions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for item in class_data %}
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <a href="{% url 'class_collection_detail' item.class_id %}" class="text-blue-600 hover:text-blue-900 hover:underline">
+                                            {{ item.class_name }}
+                                        </a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ item.total_students }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">{{ item.total_expected|floatformat:0|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">{{ item.total_collected|floatformat:0|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">{{ item.balance|floatformat:0|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span class="px-2.5 py-1 rounded-full text-xs font-bold 
+                                            {% if item.collection_rate >= 80 %} bg-green-100 text-green-800 
+                                            {% elif item.collection_rate >= 50 %} bg-yellow-100 text-yellow-800 
+                                            {% else %} bg-red-100 text-red-800 {% endif %}">
+                                            {{ item.collection_rate }}%
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">{{ item.transaction_count }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="px-6 py-8 text-center text-sm text-gray-500">No class collection records found.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

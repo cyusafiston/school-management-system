@@ -1,0 +1,151 @@
+<aside class="w-72 bg-blue-900 text-white min-h-screen flex flex-col shadow-lg select-none">
+    <!-- Portal Brand / Header -->
+    <div class="p-5 border-b border-blue-800">
+        <h2 class="text-lg font-bold tracking-wide">ACCOUNTANT PORTAL</h2>
+        <p class="text-xs text-blue-300 mt-0.5">School Management System</p>
+    </div>
+
+    <!-- Navigation Links -->
+    <nav class="flex-grow px-3 py-4 space-y-4 text-sm overflow-y-auto custom-scrollbar">
+        
+        <!-- Dashboard -->
+        <div>
+            <a href="{% url 'accountant_dashboard' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition font-medium">
+                <span>🏠</span> Dashboard
+            </a>
+        </div>
+
+        <!-- Students -->
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">👨‍🎓 Students</p>
+            <a href="{% url 'student_search' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-100">
+                <span>🔍</span> Search Students
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>📋</span> Student List
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>💳</span> Financial Profiles
+            </a>
+        </div>
+
+        <!-- Fees -->
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">💰 Fees</p>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>🏷️</span> Fee Categories
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>📑</span> Fee Structures
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>💵</span> Student Fees
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>⚙️</span> Adjustments
+            </a>
+        </div>
+
+        <!-- Payments -->
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">💳 Payments</p>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>➕</span> Record Payment
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>🔄</span> Transactions
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>📜</span> Payment History
+            </a>
+        </div>
+
+        <!-- Receipts -->
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">🧾 Receipts</p>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>📑</span> Receipt List
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>🔎</span> Search Receipts
+            </a>
+        </div>
+
+        <!-- Debtors -->
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">⚠️ Debtors</p>
+            <a href="{% url 'debtors_list' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-100">
+                <span>👥</span> All Debtors
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>🔴</span> Unpaid
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>🟠</span> Partial
+            </a>
+        </div>
+
+        <!-- Statements -->
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">📄 Statements</p>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>📊</span> Student Statements
+            </a>
+        </div>
+
+        <!-- Reports -->
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">📊 Reports</p>
+            <a href="{% url 'daily_collection_report' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-100">
+                <span>📅</span> Daily Collections
+            </a>
+           <a href="{% url 'class_collections_report' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-100">
+    <span>🏫</span> Class Collections
+</a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>📉</span> Outstanding Fees
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>📈</span> Financial Summary
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>💳</span> Payment Methods
+            </a>
+        </div>
+
+        <!-- Exports -->
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">📤 Exports</p>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>🟢</span> Excel Export
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>🔴</span> PDF Export
+            </a>
+        </div>
+
+        <!-- Administration -->
+        <div class="space-y-1 pb-4">
+            <p class="px-3 text-xs font-semibold text-blue-400 uppercase tracking-wider">⚙️ Administration</p>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>🛡️</span> Audit Logs
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-800 transition pl-6 text-blue-300 opacity-75">
+                <span>↩️</span> Reversal / Void History
+            </a>
+        </div>
+
+    </nav>
+
+    <!-- User Footer Profile Info -->
+    <div class="p-4 border-t border-blue-800 bg-blue-950 text-xs flex justify-between items-center">
+        <div>
+            <p class="font-semibold">{{ request.user.username }}</p>
+            <span class="text-blue-400">Accountant</span>
+        </div>
+        <form action="{% url 'logout' %}" method="post">
+            {% csrf_token %}
+            <button type="submit" class="text-red-300 hover:text-red-100 transition">Logout</button>
+        </form>
+    </div>
+</aside>

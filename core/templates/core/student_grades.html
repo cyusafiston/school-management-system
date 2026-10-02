@@ -1,0 +1,85 @@
+{% extends 'core/student_base.html' %}
+
+{% block title %}My Grades & Report Card{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Page Header -->
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">Academic Gradebook</h1>
+            <p class="text-sm text-gray-500 mt-1">Review your finalized performance scores and remarks per subject.</p>
+        </div>
+        <div>
+            <a href="{% url 'student_dashboard' %}" class="px-4 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-100 transition border border-gray-200">
+                ← Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Grades Table Section -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+            <h3 class="text-lg font-bold text-gray-800">Finalized Term Grades</h3>
+            <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-3 py-1 rounded-full">{{ grades_list|length }} Subjects Recorded</span>
+        </div>
+
+        {% if grades_list %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider font-semibold border-b border-gray-100">
+                            <th class="py-3.5 px-6">Subject</th>
+                            <th class="py-3.5 px-4 text-center">Term</th>
+                            <th class="py-3.5 px-4 text-center">CAT</th>
+                            <th class="py-3.5 px-4 text-center">Exam</th>
+                            <th class="py-3.5 px-4 text-center">Total</th>
+                            <th class="py-3.5 px-4 text-center">Percentage</th>
+                            <th class="py-3.5 px-4 text-center">Grade</th>
+                            <th class="py-3.5 px-6">Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 text-sm text-gray-700">
+                        {% for grade in grades_list %}
+                            <tr class="hover:bg-gray-50/50 transition">
+                                <td class="py-4 px-6 font-semibold text-gray-800">{{ grade.subject.name }}</td>
+                                <td class="py-4 px-4 text-center text-gray-500">{{ grade.term.name }}</td>
+                                <td class="py-4 px-4 text-center text-gray-600">{{ grade.cat_marks }}</td>
+                                <td class="py-4 px-4 text-center text-gray-600">{{ grade.exam_marks }}</td>
+                                <td class="py-4 px-4 text-center font-medium text-gray-800">{{ grade.marks_obtained }} / {{ grade.max_marks }}</td>
+                                <td class="py-4 px-4 text-center font-semibold text-indigo-600">{{ grade.percentage|floatformat:1 }}%</td>
+                                <td class="py-4 px-4 text-center">
+                                    <span class="inline-block w-8 h-8 leading-8 rounded-full font-bold text-xs 
+                                        {% if grade.grade_letter == 'A' %} bg-green-100 text-green-700
+                                        {% elif grade.grade_letter == 'B' %} bg-blue-100 text-blue-700
+                                        {% elif grade.grade_letter == 'C' %} bg-yellow-100 text-yellow-700
+                                        {% elif grade.grade_letter == 'D' %} bg-orange-100 text-orange-700
+                                        {% else %} bg-red-100 text-red-700 {% endif %}">
+                                        {{ grade.grade_letter }}
+                                    </span>
+                                </td>
+                                <td class="py-4 px-6">
+                                    <span class="text-xs px-2.5 py-1 rounded-md font-medium
+                                        {% if grade.grade_letter == 'A' %} bg-green-50 text-green-700
+                                        {% elif grade.grade_letter == 'B' %} bg-blue-50 text-blue-700
+                                        {% elif grade.grade_letter == 'C' %} bg-yellow-50 text-yellow-700
+                                        {% elif grade.grade_letter == 'D' %} bg-orange-50 text-orange-700
+                                        {% else %} bg-red-50 text-red-700 {% endif %}">
+                                        {{ grade.remarks|default:"N/A" }}
+                                    </span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center py-12 px-4">
+                <div class="text-gray-300 mb-2"><i class="fas fa-file-invoice text-4xl"></i></div>
+                <h4 class="text-gray-700 font-semibold">No Finalized Grades Available</h4>
+                <p class="text-gray-500 text-sm mt-1">Your teachers have not finalized or published any grade records for your account yet.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

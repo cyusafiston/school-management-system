@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Teacher Portal{% endblock %}</title>
+    <!-- Bootstrap CSS for dropdowns and layout utilities -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Tailwind CSS (via CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        /* Custom dropdown styling to match dark theme */
+        .dropdown-menu { background-color: #1e293b; border: 1px solid #475569; }
+        .dropdown-item { color: #f8fafc; font-size: 14px; }
+        .dropdown-item:hover { background-color: #334155; color: #38bdf8; }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-slate-900 text-slate-100 flex h-screen overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col justify-between hidden md:flex shrink-0">
+        <div>
+            <!-- Logo / Brand -->
+            <div class="h-16 flex items-center px-6 border-b border-slate-800 font-bold text-lg text-sky-400">
+                <i class="fas fa-graduation-cap mr-2"></i> SMS Portal
+            </div>
+            
+            <!-- Navigation Links -->
+            <nav class="p-4 space-y-2 text-sm">
+                <a href="{% url 'teacher_dashboard' %}" class="flex items-center px-4 py-3 rounded-lg bg-sky-600 text-white font-medium shadow-md">
+                    <i class="fas fa-home w-6 mr-3 text-lg"></i> Dashboard
+                </a>
+                <a href="{% url 'teacher_classes' %}" class="flex items-center px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors no-underline">
+    <i class="fas fa-book w-6 mr-3 text-lg text-slate-400"></i> My Classes
+</a>
+                <a href="{% url 'teacher_grades_list' %}" class="flex items-center px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors no-underline">
+    <i class="fas fa-edit w-6 mr-3 text-lg text-slate-400"></i> Grades
+</a>
+                <a href="{% url 'take_daily_attendance' %}" class="flex items-center px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors no-underline">
+                    <i class="fas fa-check-square w-6 mr-3 text-lg text-slate-400"></i> Attendance
+                <a href="{% url 'teacher_homework_list' %}" class="flex items-center px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors no-underline">
+    <i class="fas fa-tasks w-6 mr-3 text-lg text-slate-400"></i> Homework
+</a>
+                </a>
+                <a href="{% url 'teacher_schedule' %}" class="flex items-center px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors no-underline">
+    <i class="fas fa-calendar-alt w-6 mr-3 text-lg text-slate-400"></i> Schedule
+</a>
+<a href="{% url 'teacher_notices' %}" class="flex items-center px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors no-underline">
+    <i class="fas fa-bullhorn w-6 mr-3 text-lg text-slate-400"></i> Notices
+</a>
+<a
+  href="{% url 'teacher_change_password' %}"
+  class="flex items-center px-4 py-3 rounded-lg text-indigo-100 hover:bg-indigo-800 transition"
+>
+  <i class="fas fa-lock w-6"></i> Change Password
+</a>
+            </nav>
+        </div>
+
+        <!-- Footer / Logout -->
+        <div class="p-4 border-t border-slate-800">
+            <a href="{% url 'logout' %}" class="flex items-center px-4 py-2 rounded text-red-400 hover:bg-red-500/10">
+                <i class="fas fa-sign-out-alt w-6 mr-2"></i> Log Out
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+<main class="flex-1 flex flex-col overflow-y-auto bg-slate-900 text-slate-100">
+    <div class="p-8 w-full">
+        {% block content %}
+        {% endblock %}
+    </div>
+</main>
+
+    <!-- Bootstrap JS Bundle for Dropdown functionality -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

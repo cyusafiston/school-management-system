@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block page_title %}School Management System{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        body { font-family: "Inter", "Segoe UI", Arial, sans-serif; }
+        .login-bg {
+            background:
+                radial-gradient(circle at 15% 20%, rgba(14, 165, 233, 0.12), transparent 28%),
+                radial-gradient(circle at 85% 80%, rgba(99, 102, 241, 0.12), transparent 30%),
+                #0f172a;
+        }
+        .login-card {
+            background: rgba(30, 41, 59, 0.94);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .input-wrapper:focus-within {
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+        }
+        .login-button {
+            background: linear-gradient(135deg, #0284c7, #0ea5e9);
+        }
+        .login-button:hover {
+            background: linear-gradient(135deg, #0369a1, #0284c7);
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px rgba(14, 165, 233, 0.20);
+        }
+        .login-button:disabled { cursor: not-allowed; opacity: 0.75; transform: none; box-shadow: none; }
+        .logo-glow {
+            box-shadow: 0 0 0 6px rgba(14, 165, 233, 0.08), 0 10px 30px rgba(14, 165, 233, 0.12);
+        }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-up { animation: fadeUp 0.5s ease-out; }
+    </style>
+</head>
+<body class="login-bg min-h-screen text-slate-100">
+    <main class="min-h-screen flex items-center justify-center px-4 py-8">
+        <div class="w-full max-w-md animate-fade-up">
+            <div class="login-card border border-slate-700/70 rounded-2xl shadow-2xl overflow-hidden">
+                <div class="px-7 sm:px-9 pt-9 pb-6 text-center">
+                    <div class="logo-glow mx-auto mb-5 w-16 h-16 rounded-2xl bg-sky-500/10 border border-sky-400/20 flex items-center justify-center">
+                        <i class="fa-solid {% block icon %}fa-lock{% endblock %} text-3xl text-sky-400"></i>
+                    </div>
+                    <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">{% block heading %}School Management{% endblock %}</h1>
+                    <p class="text-sm text-slate-400 mt-3">{% block subheading %}{% endblock %}</p>
+                </div>
+                <div class="px-7 sm:px-9 pb-9">
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+            <div class="text-center mt-6">
+                <p class="text-xs text-slate-600">&copy; {% now "Y" %} School Management System</p>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

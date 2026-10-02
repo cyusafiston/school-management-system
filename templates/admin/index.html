@@ -1,0 +1,109 @@
+{% extends "admin/base.html" %}
+{% load i18n humanize %}
+
+{% block breadcrumbs %}{% endblock %}
+{% block branding %}{% include "unfold/helpers/site_branding.html" %}{% endblock %}
+
+{% block content %}
+<style>
+  .sms-dash { --bg:#fff; --soft:#f9fafb; --border:#e5e7eb; --muted:#6b7280; --text:#111827; --brand:#4f46e5; max-width:1200px; }
+  .dark .sms-dash { --bg:#111827; --soft:#1f2937; --border:#374151; --muted:#9ca3af; --text:#f3f4f6; }
+  .sms-dash h1 { font-size:1.5rem; font-weight:700; color:var(--text); margin:0; }
+  .sms-dash .sub { color:var(--muted); font-size:.875rem; margin-top:.25rem; }
+  .sms-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:1rem; align-items:center; margin-bottom:1.5rem; }
+  .sms-btns { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .sms-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem .9rem; border-radius:.6rem; font-size:.85rem; font-weight:600;
+             border:1px solid var(--border); background:var(--bg); color:var(--text); text-decoration:none; }
+  .sms-btn:hover { background:var(--soft); }
+  .sms-btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .sms-btn.primary:hover { opacity:.9; }
+  .sms-btn .material-symbols-outlined { font-size:18px; }
+  .sms-grid { display:grid; gap:1rem; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); margin-bottom:1.5rem; }
+  .sms-card { background:var(--bg); border:1px solid var(--border); border-radius:.9rem; padding:1.1rem 1.25rem; }
+  .sms-card .label { color:var(--muted); font-size:.8rem; font-weight:500; }
+  .sms-card .value { color:var(--text); font-size:1.5rem; font-weight:700; margin-top:.3rem; }
+  .sms-card .value.green { color:#16a34a; } .sms-card .value.red { color:#dc2626; }
+  .sms-two { display:grid; gap:1rem; grid-template-columns:2fr 1fr; }
+  @media (max-width:900px){ .sms-two { grid-template-columns:1fr; } }
+  .sms-card h3 { margin:0 0 .9rem; font-size:1rem; font-weight:700; color:var(--text); }
+  .sms-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  .sms-table th { text-align:left; color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase; padding:.5rem .4rem; border-bottom:1px solid var(--border); }
+  .sms-table td { padding:.65rem .4rem; border-bottom:1px solid var(--border); color:var(--text); }
+  .sms-table td.num { text-align:right; font-weight:600; }
+  .sms-table tr.void td { color:#dc2626; text-decoration:line-through; }
+  .sms-bar { height:8px; border-radius:99px; background:var(--soft); overflow:hidden; margin:.35rem 0 .9rem; }
+  .sms-bar > span { display:block; height:100%; background:var(--brand); }
+  .sms-warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:.9rem 1rem; border-radius:.7rem; margin-bottom:1.25rem; font-size:.875rem; }
+  .sms-row { display:flex; justify-content:space-between; font-size:.85rem; color:var(--text); }
+  .sms-row span:last-child { color:var(--muted); }
+</style>
+
+<div class="sms-dash">
+  <div class="sms-head">
+    <div>
+      <h1>{% trans "Welcome back" %}, {{ request.user.first_name|default:request.user.username }}</h1>
+      <p class="sub">{% if sms.term %}{{ sms.term }} &middot; {% trans "current term" %}{% else %}{% trans "No current term set" %}{% endif %}</p>
+    </div>
+    <div class="sms-btns">
+      <a class="sms-btn primary" href="{% url 'record_payment' %}"><span class="material-symbols-outlined">add_card</span>{% trans "Record payment" %}</a>
+      <a class="sms-btn" href="{% url 'debtors_list' %}"><span class="material-symbols-outlined">warning</span>{% trans "Debtors" %}</a>
+      <a class="sms-btn" href="{% url 'daily_collection_report' %}"><span class="material-symbols-outlined">bar_chart</span>{% trans "Daily report" %}</a>
+      <a class="sms-btn" href="{% url 'class_collections_report' %}"><span class="material-symbols-outlined">groups</span>{% trans "Class collections" %}</a>
+      <a class="sms-btn" href="{% url 'admin_attendance_report' %}"><span class="material-symbols-outlined">fact_check</span>{% trans "Attendance" %}</a>
+    </div>
+  </div>
+
+  {% if not sms.term %}
+    <div class="sms-warn">{% trans "No term is marked as current. Financial figures will appear once you set a current term." %}
+      <a href="{% url 'admin:core_term_changelist' %}">{% trans "Manage terms" %}</a></div>
+  {% endif %}
+
+  <div class="sms-grid">
+    <div class="sms-card"><div class="label">{% trans "Students" %}</div><div class="value">{{ sms.total_students|intcomma }}</div></div>
+    <div class="sms-card"><div class="label">{% trans "Collected today" %}</div><div class="value green">{{ sms.collected_today|floatformat:0|intcomma }} RWF</div></div>
+    <div class="sms-card"><div class="label">{% trans "Collected this term" %}</div><div class="value">{{ sms.collected_term|floatformat:0|intcomma }} RWF</div></div>
+    <div class="sms-card"><div class="label">{% trans "Outstanding this term" %}</div><div class="value red">{{ sms.outstanding|floatformat:0|intcomma }} RWF</div></div>
+  </div>
+
+  <div class="sms-two">
+    <div class="sms-card">
+      <h3>{% trans "Recent payments" %}</h3>
+      <table class="sms-table">
+        <thead><tr><th>{% trans "Receipt" %}</th><th>{% trans "Student" %}</th><th>{% trans "Date" %}</th><th style="text-align:right">{% trans "Amount" %}</th></tr></thead>
+        <tbody>
+          {% for p in sms.recent %}
+            <tr class="{% if p.is_voided %}void{% endif %}">
+              <td><a href="{% url 'admin:core_payment_change' p.pk %}">{{ p.receipt_number|default:"N/A" }}</a></td>
+              <td>{{ p.student.first_name }} {{ p.student.last_name }}</td>
+              <td>{{ p.date_paid|date:"d/m/Y H:i" }}</td>
+              <td class="num">{{ p.amount_paid|floatformat:0|intcomma }} RWF</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4" style="text-align:center;color:var(--muted)">{% trans "No payments recorded yet." %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p style="margin:.9rem 0 0;font-size:.85rem"><a href="{% url 'admin:core_payment_changelist' %}">{% trans "View all payments" %} &rarr;</a></p>
+    </div>
+
+    <div class="sms-card">
+      <h3>{% trans "Term collection" %}</h3>
+      <div class="sms-row"><span>{% trans "Collected vs expected" %}</span><span>{{ sms.rate }}%</span></div>
+      <div class="sms-bar"><span style="width:{{ sms.rate }}%"></span></div>
+      <div class="sms-row" style="margin-bottom:1rem"><span>{% trans "Expected" %}</span><span>{{ sms.expected|floatformat:0|intcomma }} RWF</span></div>
+
+      <h3 style="margin-top:1.25rem">{% trans "By payment method" %}</h3>
+      {% for m in sms.by_method %}
+        <div class="sms-row"><span>{{ m.method }}</span><span>{{ m.total|floatformat:0|intcomma }} RWF</span></div>
+        <div class="sms-bar"><span style="width:{{ m.pct }}%"></span></div>
+      {% empty %}
+        <p class="sub">{% trans "No payments this term." %}</p>
+      {% endfor %}
+
+      {% if sms.voided_count %}
+        <p class="sub" style="margin-top:1rem">{{ sms.voided_count }} {% trans "voided payment(s) this term" %}</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

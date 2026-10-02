@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Receipt {{ payment.receipt_number }} | SMS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans py-10">
+    <div class="max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden p-8 border border-gray-200">
+        <!-- School Header -->
+        <div class="text-center border-b pb-4 mb-6">
+            <h1 class="text-xl font-bold text-blue-900 tracking-wide">SCHOOL MANAGEMENT SYSTEM</h1>
+            <p class="text-xs text-gray-500 uppercase">Official Payment Receipt</p>
+        </div>
+
+        <!-- Receipt Metadata -->
+        <div class="flex justify-between text-sm mb-6 text-gray-600">
+            <div>
+                <p><span class="font-semibold text-gray-800">Receipt No:</span> {{ payment.receipt_number }}</p>
+                <p><span class="font-semibold text-gray-800">Date:</span> {{ payment.date_paid|date:"d/m/Y" }}</p>
+            </div>
+            <div class="text-right">
+                <p><span class="font-semibold text-gray-800">Term:</span> {{ payment.term.name }}</p>
+                <p><span class="font-semibold text-gray-800">Year:</span> {{ payment.academic_year.name }}</p>
+            </div>
+        </div>
+
+        <!-- Student Details -->
+        <div class="bg-gray-50 rounded-lg p-4 mb-6 text-sm space-y-2 border">
+            <div class="flex justify-between">
+                <span class="text-gray-500">Student:</span>
+                <span class="font-semibold text-gray-900">{{ payment.student }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-500">Registration No:</span>
+                <span class="font-semibold text-gray-900">{{ payment.student.registration_number }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-500">Class Stream:</span>
+                <span class="font-semibold text-gray-900">{{ class_name }}</span>
+            </div>
+        </div>
+
+        <!-- Financial Breakdown -->
+        <div class="border-t border-b py-4 mb-6 space-y-2 text-sm">
+            <div class="flex justify-between">
+                <span class="text-gray-600">Payment Method:</span>
+                <span class="font-medium text-gray-800">{{ payment.get_payment_method_display|default:payment.payment_method }}</span>
+            </div>
+            {% if payment.reference_number %}
+            <div class="flex justify-between">
+                <span class="text-gray-600">Reference / Code:</span>
+                <span class="font-medium text-gray-800">{{ payment.reference_number }}</span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between text-lg font-bold text-blue-900 pt-2 border-t">
+                <span>Amount Paid:</span>
+                <span>{{ payment.amount_paid|floatformat:0 }} RWF</span>
+            </div>
+        </div>
+
+        <!-- Signoff / Received By -->
+        <div class="text-xs text-gray-500 flex justify-between items-center mb-8">
+            <p>Received By: <span class="font-medium text-gray-700">{{ payment.received_by.username|title|default:"Accountant" }}</span></p>
+            <p class="italic">Thank you!</p>
+        </div>
+
+        <!-- Actions (Hidden on Print) -->
+        <div class="no-print flex gap-3">
+            <button onclick="window.print()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition">Print Receipt</button>
+            <a href="{% url 'accountant_dashboard' %}" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium text-center hover:bg-gray-300 transition">Dashboard</a>
+        </div>
+    </div>
+</body>
+</html>

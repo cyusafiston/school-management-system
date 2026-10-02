@@ -1,0 +1,126 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Student Search | SMS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    
+    <div class="flex h-screen overflow-hidden">
+        <!-- Include Sidebar Component -->
+        {% include 'accountant/components/sidebar.html' %}
+
+        <!-- Main Content Wrapper -->
+        <div class="flex flex-col flex-1 h-full overflow-y-auto">
+            
+            <!-- Top Header Bar -->
+            <header class="bg-white shadow-sm px-8 py-4 flex justify-between items-center border-b">
+                <h1 class="text-xl font-bold text-gray-800">Student Search & Directory</h1>
+                <span class="text-sm text-gray-500">Academic Year: Active</span>
+            </header>
+
+            <!-- Main Dynamic Content -->
+            <main class="p-8 max-w-7xl w-full mx-auto flex-grow">
+                
+                <!-- Search Bar Box -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <form id="search-form" method="GET" action="" class="flex gap-4">
+                        <input 
+                            type="text" 
+                            id="search-input"
+                            name="q" 
+                            value="{{ query }}" 
+                            placeholder="Search by student name or registration number..." 
+                            class="flex-grow border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autofocus
+                            autocomplete="off"
+                        >
+                        <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition font-medium">
+                            Search
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Search Results Container -->
+                <div id="search-results-container" class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="p-6 border-b">
+                        <h2 class="text-xl font-semibold text-gray-800">
+                            Search Results {% if query %}for "<span class="text-blue-600" id="query-display">{{ query }}</span>"{% endif %}
+                        </h2>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registration No</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="student-table-body" class="bg-white divide-y divide-gray-200">
+                                {% for student in students %}
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{{ student.registration_number }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ student }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {% if student.current_class %}{{ student.current_class.name }}{% else %}N/A{% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <a href="{% url 'student_financial_profile' student.id %}" class="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1 rounded transition">View Financial Profile</a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="px-6 py-8 text-center text-sm text-gray-500" id="empty-state">
+                                        {% if query %}
+                                            No students found matching "{{ query }}". Try searching with a different keyword.
+                                        {% else %}
+                                            Enter a name or registration number above to start searching.
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- Live Search JavaScript -->
+    <script>
+        const searchInput = document.getElementById('search-input');
+        const tableBody = document.getElementById('student-table-body');
+        let debounceTimer;
+
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            const query = searchInput.value.trim();
+
+            debounceTimer = setTimeout(() => {
+                fetch(`?q=${encodeURIComponent(query)}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newTableBody = doc.getElementById('student-table-body');
+                    if (newTableBody) {
+                        tableBody.innerHTML = newTableBody.innerHTML;
+                    }
+                    const newUrl = query ? `?q=${encodeURIComponent(query)}` : window.location.pathname;
+                    window.history.replaceState({}, '', newUrl);
+                })
+                .catch(error => console.error('Error fetching search results:', error));
+            }, 300);
+        });
+    </script>
+</body>
+</html>

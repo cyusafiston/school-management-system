@@ -1,0 +1,957 @@
+{% load humanize %}
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accountant Dashboard | SMS</title>
+
+```
+<script src="https://cdn.tailwindcss.com"></script>
+```
+
+</head>
+
+<body class="bg-gray-100 font-sans text-gray-800">
+
+<div class="flex h-screen overflow-hidden">
+
+```
+<!-- =========================================================
+     ACCOUNTANT SIDEBAR
+========================================================== -->
+{% include 'accountant/components/sidebar.html' %}
+
+
+<!-- =========================================================
+     MAIN CONTENT
+========================================================== -->
+<div class="flex flex-col flex-1 h-full overflow-y-auto bg-gray-100">
+
+
+    <!-- =====================================================
+         TOP HEADER
+    ====================================================== -->
+    <header class="bg-white border-b shadow-sm px-6 lg:px-8 py-4">
+
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+
+            <!-- Page title -->
+            <div>
+                <p class="text-sm text-gray-500 mb-1">
+                    Accountant Portal
+                </p>
+
+                <h1 class="text-2xl font-bold text-gray-900">
+                    Financial Dashboard
+                </h1>
+            </div>
+
+
+            <!-- Right side -->
+            <div class="flex flex-wrap items-center gap-3">
+
+                {% if current_term %}
+                    <div class="flex items-center gap-2 bg-blue-50 border border-blue-100 text-blue-700 px-3 py-2 rounded-lg">
+                        <span class="w-2 h-2 bg-blue-500 rounded-full"></span>
+
+                        <span class="text-sm font-medium">
+                            {{ current_term.name }}
+                        </span>
+                    </div>
+                {% endif %}
+
+                <div class="bg-gray-50 border border-gray-200 px-3 py-2 rounded-lg">
+                    <p class="text-xs text-gray-500">
+                        Logged in as
+                    </p>
+
+                    <p class="text-sm font-semibold text-gray-800">
+                        {{ request.user.username }}
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+    </header>
+
+
+    <!-- =====================================================
+         MAIN DASHBOARD AREA
+    ====================================================== -->
+    <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
+
+
+        <!-- =================================================
+             FINANCE STATUS
+        ================================================== -->
+        {% if finance_ready %}
+
+            <div class="mb-6 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+
+                    <div class="flex items-start gap-3">
+
+                        <div class="flex-shrink-0 w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-emerald-600"
+                                 fill="none"
+                                 stroke="currentColor"
+                                 viewBox="0 0 24 24">
+                                <path stroke-linecap="round"
+                                      stroke-linejoin="round"
+                                      stroke-width="2"
+                                      d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+
+                        <div>
+                            <p class="font-semibold text-emerald-800">
+                                Finance System Active
+                            </p>
+
+                            {% if finance_message %}
+                                <p class="text-sm text-emerald-700 mt-1">
+                                    {{ finance_message }}
+                                </p>
+                            {% endif %}
+                        </div>
+
+                    </div>
+
+
+                    <div class="bg-white border border-emerald-200 px-4 py-2 rounded-lg">
+
+                        <p class="text-xs text-gray-500">
+                            Students
+                        </p>
+
+                        <p class="text-lg font-bold text-gray-900">
+                            {{ total_students|intcomma }}
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        {% elif finance_message %}
+
+            <div class="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+
+                <p class="text-sm font-medium text-blue-800">
+                    {{ finance_message }}
+                </p>
+
+            </div>
+
+        {% endif %}
+
+
+
+        <!-- =================================================
+             FINANCIAL OVERVIEW TITLE
+        ================================================== -->
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-5">
+
+            <div>
+                <h2 class="text-xl font-bold text-gray-900">
+                    Financial Overview
+                </h2>
+
+                <p class="text-sm text-gray-500 mt-1">
+                    Current financial position of the school.
+                </p>
+            </div>
+
+            {% if current_term %}
+                <p class="text-sm text-gray-500">
+                    Current term:
+                    <span class="font-semibold text-gray-700">
+                        {{ current_term.name }}
+                    </span>
+                </p>
+            {% endif %}
+
+        </div>
+
+
+
+        <!-- =================================================
+             FINANCIAL METRICS
+        ================================================== -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5 mb-8">
+
+
+            <!-- EXPECTED -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+
+                <div class="flex items-center justify-between mb-4">
+
+                    <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5 text-blue-600"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2m0-2c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                        Expected
+                    </span>
+
+                </div>
+
+                <p class="text-sm text-gray-500">
+                    Total Expected Fees
+                </p>
+
+                <p class="text-xl font-bold text-gray-900 mt-1">
+                    {{ total_expected|floatformat:0|intcomma }}
+                    <span class="text-sm font-medium text-gray-500">RWF</span>
+                </p>
+
+            </div>
+
+
+
+            <!-- COLLECTED -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+
+                <div class="flex items-center justify-between mb-4">
+
+                    <div class="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5 text-green-600"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2m0-2c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span class="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                        Collected
+                    </span>
+
+                </div>
+
+                <p class="text-sm text-gray-500">
+                    Total Collected
+                </p>
+
+                <p class="text-xl font-bold text-gray-900 mt-1">
+                    {{ total_collected|floatformat:0|intcomma }}
+                    <span class="text-sm font-medium text-gray-500">RWF</span>
+                </p>
+
+            </div>
+
+
+
+            <!-- OUTSTANDING -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+
+                <div class="flex items-center justify-between mb-4">
+
+                    <div class="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5 text-red-600"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span class="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-full">
+                        Outstanding
+                    </span>
+
+                </div>
+
+                <p class="text-sm text-gray-500">
+                    Outstanding Balance
+                </p>
+
+                <p class="text-xl font-bold text-gray-900 mt-1">
+                    {{ outstanding_balance|floatformat:0|intcomma }}
+                    <span class="text-sm font-medium text-gray-500">RWF</span>
+                </p>
+
+            </div>
+
+
+
+            <!-- CREDIT / OVERPAID -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+
+                <div class="flex items-center justify-between mb-4">
+
+                    <div class="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5 text-purple-600"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2m0-2c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span class="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
+                        Credit
+                    </span>
+
+                </div>
+
+                <p class="text-sm text-gray-500">
+                    Overpaid / Advance
+                </p>
+
+                <p class="text-xl font-bold text-gray-900 mt-1">
+                    {{ total_overpaid|floatformat:0|intcomma }}
+                    <span class="text-sm font-medium text-gray-500">RWF</span>
+                </p>
+
+            </div>
+
+
+
+            <!-- TODAY -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+
+                <div class="flex items-center justify-between mb-4">
+
+                    <div class="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5 text-emerald-600"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span class="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
+                        Today
+                    </span>
+
+                </div>
+
+                <p class="text-sm text-gray-500">
+                    Today's Collections
+                </p>
+
+                <p class="text-xl font-bold text-emerald-600 mt-1">
+                    {{ today_collections|floatformat:0|intcomma }}
+                    <span class="text-sm font-medium text-gray-500">RWF</span>
+                </p>
+
+                <p class="text-xs text-gray-400 mt-1">
+                    {{ today_transactions|intcomma }} transaction{{ today_transactions|pluralize }}
+                </p>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             QUICK ACTIONS
+        ================================================== -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
+
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">
+                        Quick Actions
+                    </h3>
+
+                    <p class="text-sm text-gray-500 mt-1">
+                        Common accounting tasks.
+                    </p>
+                </div>
+
+            </div>
+
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+
+                <!-- Record Payment -->
+                <a href="{% url 'record_payment' %}"
+                   class="group flex items-center gap-3 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-4 py-3 rounded-lg transition">
+
+                    <div class="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 4v16m8-8H4"/>
+
+                        </svg>
+
+                    </div>
+
+                    <div>
+                        <p class="font-semibold text-blue-800">
+                            Record Payment
+                        </p>
+
+                        <p class="text-xs text-blue-600">
+                            Receive a student payment
+                        </p>
+                    </div>
+
+                </a>
+
+
+                <!-- Debtors -->
+                <a href="{% url 'debtors_list' %}"
+                   class="group flex items-center gap-3 border border-red-200 bg-red-50 hover:bg-red-100 px-4 py-3 rounded-lg transition">
+
+                    <div class="w-9 h-9 bg-red-600 text-white rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77-1.33.19-3 1.73 3z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <div>
+                        <p class="font-semibold text-red-800">
+                            View Debtors
+                        </p>
+
+                        <p class="text-xs text-red-600">
+                            Check outstanding fees
+                        </p>
+                    </div>
+
+                </a>
+
+
+                <!-- Daily Collections -->
+                <a href="{% url 'daily_collection_report' %}"
+                   class="group flex items-center gap-3 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-4 py-3 rounded-lg transition">
+
+                    <div class="w-9 h-9 bg-emerald-600 text-white rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v12a2 2 0 01-2 2z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <div>
+                        <p class="font-semibold text-emerald-800">
+                            Daily Collections
+                        </p>
+
+                        <p class="text-xs text-emerald-600">
+                            Review today's receipts
+                        </p>
+                    </div>
+
+                </a>
+
+
+                <!-- Student Search -->
+                <a href="{% url 'student_search' %}"
+                   class="group flex items-center gap-3 border border-gray-200 bg-gray-50 hover:bg-gray-100 px-4 py-3 rounded-lg transition">
+
+                    <div class="w-9 h-9 bg-gray-700 text-white rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M21 21l-4.35-4.35m1.35-5.65a7 7 0 11-14 0 7 7 0 0114 0z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <div>
+                        <p class="font-semibold text-gray-800">
+                            Search Student
+                        </p>
+
+                        <p class="text-xs text-gray-500">
+                            Find a financial profile
+                        </p>
+                    </div>
+
+                </a>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             TODAY / COLLECTION SUMMARY
+        ================================================== -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+
+
+            <!-- Today's summary -->
+            <div class="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+
+                <div class="flex items-center justify-between mb-5">
+
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900">
+                            Today
+                        </h3>
+
+                        <p class="text-sm text-gray-500">
+                            Collection activity
+                        </p>
+                    </div>
+
+                    <div class="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+
+                        <svg class="w-5 h-5 text-emerald-600"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+
+                        </svg>
+
+                    </div>
+
+                </div>
+
+                <p class="text-3xl font-bold text-gray-900">
+                    {{ today_collections|floatformat:0|intcomma }}
+                    <span class="text-sm font-medium text-gray-500">
+                        RWF
+                    </span>
+                </p>
+
+                <p class="text-sm text-gray-500 mt-2">
+                    Collected from
+                    <strong class="text-gray-700">
+                        {{ today_transactions }}
+                    </strong>
+                    transaction{{ today_transactions|pluralize }} today.
+                </p>
+
+                <a href="{% url 'daily_collection_report' %}"
+                   class="inline-flex items-center mt-5 text-sm font-semibold text-blue-600 hover:text-blue-800">
+
+                    View daily report
+
+                    <svg class="w-4 h-4 ml-1"
+                         fill="none"
+                         stroke="currentColor"
+                         viewBox="0 0 24 24">
+
+                        <path stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M9 5l7 7-7 7"/>
+
+                    </svg>
+
+                </a>
+
+            </div>
+
+
+
+            <!-- Collection progress -->
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+
+                <div class="flex items-center justify-between mb-5">
+
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900">
+                            Collection Progress
+                        </h3>
+
+                        <p class="text-sm text-gray-500">
+                            Collected compared with expected fees.
+                        </p>
+                    </div>
+
+                    {% if total_expected > 0 %}
+
+                        {% widthratio total_collected total_expected 100 as collection_rate %}
+
+                        <span class="text-lg font-bold text-blue-600">
+                            {{ collection_rate }}%
+                        </span>
+
+                    {% else %}
+
+                        <span class="text-lg font-bold text-gray-400">
+                            0%
+                        </span>
+
+                    {% endif %}
+
+                </div>
+
+
+                <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+
+                    {% if total_expected > 0 %}
+
+                        {% widthratio total_collected total_expected 100 as collection_width %}
+
+                        <div class="bg-blue-600 h-3 rounded-full"
+                             style="width: min({{ collection_width }}%, 100%);">
+                        </div>
+
+                    {% else %}
+
+                        <div class="bg-gray-300 h-3 rounded-full"
+                             style="width: 0%;">
+                        </div>
+
+                    {% endif %}
+
+                </div>
+
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+
+                    <div>
+                        <p class="text-xs text-gray-500">
+                            Expected
+                        </p>
+
+                        <p class="text-sm font-bold text-gray-800">
+                            {{ total_expected|floatformat:0|intcomma }} RWF
+                        </p>
+                    </div>
+
+                    <div>
+                        <p class="text-xs text-gray-500">
+                            Collected
+                        </p>
+
+                        <p class="text-sm font-bold text-green-600">
+                            {{ total_collected|floatformat:0|intcomma }} RWF
+                        </p>
+                    </div>
+
+                    <div>
+                        <p class="text-xs text-gray-500">
+                            Remaining
+                        </p>
+
+                        <p class="text-sm font-bold text-red-600">
+                            {{ outstanding_balance|floatformat:0|intcomma }} RWF
+                        </p>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             RECENT TRANSACTIONS
+        ================================================== -->
+        <div class="bg-white shadow-sm border border-gray-200 rounded-xl overflow-hidden">
+
+            <div class="px-6 py-5 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">
+                        Recent Transactions
+                    </h3>
+
+                    <p class="text-sm text-gray-500 mt-1">
+                        Latest payments received by the school.
+                    </p>
+                </div>
+
+                <a href="{% url 'daily_collection_report' %}"
+                   class="text-sm font-semibold text-blue-600 hover:text-blue-800">
+
+                    View collections →
+
+                </a>
+
+            </div>
+
+
+            {% if recent_payments %}
+
+                <div class="overflow-x-auto">
+
+                    <table class="min-w-full">
+
+                        <thead class="bg-gray-50">
+
+                            <tr>
+
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    Student
+                                </th>
+
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    Amount
+                                </th>
+
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    Method
+                                </th>
+
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    Date
+                                </th>
+
+                                <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    Action
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody class="divide-y divide-gray-100">
+
+                            {% for payment in recent_payments %}
+
+                                <tr class="hover:bg-gray-50 transition">
+
+                                    <!-- Student -->
+                                    <td class="px-6 py-4 whitespace-nowrap">
+
+                                        <div class="flex items-center">
+
+                                            <div class="w-9 h-9 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-bold text-sm mr-3">
+
+                                                {{ payment.student.first_name|first|upper }}
+
+                                            </div>
+
+                                            <div>
+
+                                                <p class="text-sm font-semibold text-gray-900">
+                                                    {{ payment.student }}
+                                                </p>
+
+                                                <p class="text-xs text-gray-400">
+                                                    Payment #{{ payment.receipt_number }}
+                                                </p>
+
+                                            </div>
+
+                                        </div>
+
+                                    </td>
+
+
+                                    <!-- Amount -->
+                                    <td class="px-6 py-4 whitespace-nowrap">
+
+                                        <span class="text-sm font-bold text-green-600">
+                                            {{ payment.amount_paid|floatformat:0|intcomma }}
+                                            RWF
+                                        </span>
+
+                                    </td>
+
+
+                                    <!-- Method -->
+                                    <td class="px-6 py-4 whitespace-nowrap">
+
+                                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+
+                                            {{ payment.get_payment_method_display }}
+
+                                        </span>
+
+                                    </td>
+
+
+                                    <!-- Date -->
+                                    <td class="px-6 py-4 whitespace-nowrap">
+
+                                        <p class="text-sm text-gray-700">
+                                            {{ payment.date_paid|date:"d M Y" }}
+                                        </p>
+
+                                        <p class="text-xs text-gray-400">
+                                            {{ payment.date_paid|date:"H:i" }}
+                                        </p>
+
+                                    </td>
+
+
+                                    <!-- Action -->
+                                    <td class="px-6 py-4 whitespace-nowrap text-right">
+
+                                        <a href="{% url 'payment_receipt' payment.id %}"
+                                           class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition">
+
+                                            View Receipt
+
+                                            <svg class="w-4 h-4 ml-1"
+                                                 fill="none"
+                                                 stroke="currentColor"
+                                                 viewBox="0 0 24 24">
+
+                                                <path stroke-linecap="round"
+                                                      stroke-linejoin="round"
+                                                      stroke-width="2"
+                                                      d="M9 5l7 7-7 7"/>
+
+                                            </svg>
+
+                                        </a>
+
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% else %}
+
+                <!-- Empty state -->
+                <div class="px-6 py-12 text-center">
+
+                    <div class="w-14 h-14 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+
+                        <svg class="w-7 h-7 text-gray-400"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2m0-2c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <h4 class="text-sm font-semibold text-gray-800">
+                        No payment transactions yet
+                    </h4>
+
+                    <p class="text-sm text-gray-500 mt-1 mb-5">
+                        Payments recorded by the accountant will appear here.
+                    </p>
+
+                    <a href="{% url 'record_payment' %}"
+                       class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
+
+                        Record First Payment
+
+                    </a>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- =================================================
+             FOOTER
+        ================================================== -->
+        <div class="py-6 text-center">
+
+            <p class="text-xs text-gray-400">
+                School Management System • Accountant Portal
+            </p>
+
+        </div>
+
+    </main>
+
+</div>
+```
+
+</div>
+
+</body>
+</html>

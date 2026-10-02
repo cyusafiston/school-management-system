@@ -1,0 +1,57 @@
+{% extends 'core/base_teacher.html' %}
+{% block title %}My Teaching Schedule{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Teaching Schedule</h1>
+            <p class="text-slate-400 text-sm">Overview of your assigned classes and teaching streams for the current term.</p>
+        </div>
+        {% if current_term %}
+        <span class="bg-sky-500/10 text-sky-400 border border-sky-500/20 px-3 py-1 rounded-full text-xs font-semibold">
+            Current Term: {{ current_term.name }}
+        </span>
+        {% endif %}
+    </div>
+
+    <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+        <div class="p-4 border-b border-slate-800 bg-slate-900/50 font-semibold text-slate-200">
+            <i class="fas fa-list-alt mr-2 text-sky-400"></i> Active Assignments & Classes
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-800 text-xs text-slate-400 uppercase bg-slate-900/30">
+                        <th class="p-4">Subject</th>
+                        <th class="p-4">Class Stream</th>
+                        <th class="p-4">Term</th>
+                        <th class="p-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800 text-sm">
+                    {% for assignment in assignments %}
+                    <tr class="hover:bg-slate-900/40 transition-colors">
+                        <td class="p-4 font-semibold text-white">{{ assignment.subject.name }}</td>
+                        <td class="p-4 text-slate-300">{{ assignment.current_class.name }}</td>
+                        <td class="p-4 text-slate-400">{{ assignment.term.name }}</td>
+                        <td class="p-4">
+                            <a href="{% url 'class_students' assignment.id %}" class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-xs font-medium no-underline transition-colors">
+                                <i class="fas fa-eye mr-1"></i> View Students
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="p-8 text-center text-slate-500">
+                            <i class="fas fa-calendar-times text-2xl mb-2"></i>
+                            <p>No active teaching schedule assignments found.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

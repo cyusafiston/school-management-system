@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Input Grades - School Management System</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 30px; }
+        .container { max-width: 1100px; margin: 0 auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+        h1 { color: #38bdf8; margin-top: 0; font-size: 22px; }
+        p { color: #94a3b8; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #38bdf8; text-decoration: none; font-size: 14px; }
+        .back-link:hover { text-decoration: underline; }
+        table { width: 100%; border-collapse: collapse; background: #0f172a; border-radius: 8px; overflow: hidden; margin-top: 20px; }
+        th, td { padding: 12px 14px; text-align: left; }
+        th { background: #334155; color: #cbd5e1; font-size: 12px; text-transform: uppercase; }
+        td { border-bottom: 1px solid #1e293b; color: #e2e8f0; font-size: 14px; }
+        input[type="number"] { width: 70px; padding: 8px; background: #1e293b; border: 1px solid #475569; color: white; border-radius: 4px; text-align: center; }
+        input[type="number"]:focus { border-color: #38bdf8; outline: none; }
+        .save-btn { margin-top: 25px; background: #22c55e; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 15px; }
+        .save-btn:hover { background: #16a34a; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; background: #334155; color: #38bdf8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="{% url 'teacher_dashboard' %}" class="back-link">&larr; Back to Dashboard</a>
+        <h1>Input Grades: {{ assignment.subject.name }}</h1>
+        <p>Class: <strong>{{ assignment.current_class.name }}</strong> | Term: <strong>{{ assignment.term }}</strong></p>
+        <p style="font-size: 13px; color: #64748b;">Max CAT Marks: {{ assignment.subject.max_cat_marks }} | Max Exam Marks: {{ assignment.subject.max_exam_marks }}</p>
+
+        <form method="POST">
+            {% csrf_token %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Student Name</th>
+                        <th>Reg Number</th>
+                        <th>CAT</th>
+                        <th>Exam</th>
+                        <th>Total</th>
+                        <th>%</th>
+                        <th>Grade</th>
+                        <th>Remarks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td><strong>{{ student.first_name }} {{ student.last_name }}</strong></td>
+                        <td style="color: #94a3b8; font-size: 13px;">{{ student.registration_number }}</td>
+                        <td>
+                            <input type="number" step="0.01" name="cat_{{ student.id }}" 
+                                   value="{{ student.grade.cat_marks|default:'0.00' }}" 
+                                   min="0" max="{{ assignment.subject.max_cat_marks }}">
+                        </td>
+                        <td>
+                            <input type="number" step="0.01" name="exam_{{ student.id }}" 
+                                   value="{{ student.grade.exam_marks|default:'0.00' }}" 
+                                   min="0" max="{{ assignment.subject.max_exam_marks }}">
+                        </td>
+                        <td><strong>{{ student.grade.marks_obtained|default:'0.00' }}</strong></td>
+                        <td><strong>{{ student.grade.percentage|default:'0.00' }}%</strong></td>
+                        <td><span class="badge">{{ student.grade.grade_letter|default:'-' }}</span></td>
+                        <td style="color: #94a3b8; font-size: 13px;">{{ student.grade.remarks|default:'-' }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 30px; color: #64748b;">No students found enrolled in this class stream yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if students %}
+            <button type="submit" class="save-btn">Save All Grades</button>
+            {% endif %}
+        </form>
+    </div>
+</body>
+</html>
