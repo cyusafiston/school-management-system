@@ -37,7 +37,7 @@ SECRET_KEY = os.environ.get(
     "fallback-insecure-key-for-local",
 )
 
-DEBUG = os.environ.get("DEBUG", "False") == "True"
+DEBUG = True
 
 ALLOWED_HOSTS = [
     ".ngrok-free.dev",

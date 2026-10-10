@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from django.http import HttpResponse, Http404 # Add HttpResponse here
 from datetime import datetime, date
 import calendar
 
