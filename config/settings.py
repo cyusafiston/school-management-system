@@ -16,6 +16,7 @@ from pathlib import Path
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 from dotenv import load_dotenv
+import dj_database_url
 
 
 # ============================================================
@@ -37,17 +38,14 @@ SECRET_KEY = os.environ.get(
     "fallback-insecure-key-for-local",
 )
 
-DEBUG = True
+# Read DEBUG from environment, default to False in production
+DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = [
-    ".ngrok-free.dev",
-    "10.18.97.69",
-    "127.0.0.1",
-    "localhost",
-]
+ALLOWED_HOSTS = ["*"]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://starfish-trilogy-albatross.ngrok-free.dev",
+    "https://*.onrender.com",
 ]
 
 
@@ -82,7 +80,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware", # WhiteNoise for static files
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -131,11 +129,12 @@ TEMPLATES = [
 # DATABASE
 # ============================================================
 
+# Automatically use Render's PostgreSQL database if available, else fallback to SQLite
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
+    "default": dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+    )
 }
 
 
@@ -189,8 +188,10 @@ USE_TZ = True
 # ============================================================
 
 STATIC_URL = "static/"
-
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Simplified static file serving for production using WhiteNoise
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 
 # ============================================================
@@ -215,15 +216,6 @@ LOGOUT_REDIRECT_URL = "/login/"
 
 # ============================================================
 # EMAIL CONFIGURATION
-# ============================================================
-#
-# Development:
-#   Uses Django's console email backend by default.
-#   Password-reset emails will appear directly in the terminal.
-#
-# Production:
-#   Set EMAIL_BACKEND and SMTP variables in .env.
-#
 # ============================================================
 
 EMAIL_BACKEND = os.environ.get(
