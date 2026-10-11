@@ -53,12 +53,13 @@ CSRF_TRUSTED_ORIGINS = [
 # APPLICATIONS
 # ============================================================
 
+
 INSTALLED_APPS = [
     # Admin theme
     "unfold",
     "unfold.contrib.filters",
 
-    # Django
+    # Django built-in apps
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -71,6 +72,7 @@ INSTALLED_APPS = [
 
     # Project apps
     "core",
+    "tenants",
 ]
 
 
@@ -267,6 +269,7 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 # UNFOLD ADMIN THEME
 # ============================================================
 
+
 UNFOLD = {
     "SITE_TITLE": "School Management System",
     "SITE_HEADER": "School Administration",
@@ -287,7 +290,6 @@ UNFOLD = {
             {
                 "title": _("Overview"),
                 "separator": True,
-
                 "items": [
                     {
                         "title": _("Dashboard"),
@@ -298,10 +300,36 @@ UNFOLD = {
             },
 
             {
+                "title": _("Platform Management"),
+                "separator": True,
+                "collapsible": True,
+                "permission": lambda request: (
+                    request.user.is_authenticated
+                    and request.user.is_active
+                    and request.user.is_superuser
+                ),
+                "items": [
+                    {
+                        "title": _("Schools"),
+                        "icon": "school",
+                        "link": reverse_lazy(
+                            "admin:tenants_school_changelist"
+                        ),
+                    },
+                    {
+                        "title": _("School memberships"),
+                        "icon": "groups",
+                        "link": reverse_lazy(
+                            "admin:tenants_schoolmembership_changelist"
+                        ),
+                    },
+                ],
+            },
+
+            {
                 "title": _("Finance"),
                 "separator": True,
                 "collapsible": True,
-
                 "items": [
                     {
                         "title": _("Record payment"),
@@ -362,7 +390,6 @@ UNFOLD = {
                 "title": _("Students"),
                 "separator": True,
                 "collapsible": True,
-
                 "items": [
                     {
                         "title": _("Students"),
@@ -392,7 +419,6 @@ UNFOLD = {
                 "title": _("Academics"),
                 "separator": True,
                 "collapsible": True,
-
                 "items": [
                     {
                         "title": _("Academic years"),
@@ -450,7 +476,6 @@ UNFOLD = {
                 "title": _("Attendance"),
                 "separator": True,
                 "collapsible": True,
-
                 "items": [
                     {
                         "title": _("Daily attendance report"),
@@ -480,7 +505,6 @@ UNFOLD = {
                 "title": _("Users & access"),
                 "separator": True,
                 "collapsible": True,
-
                 "items": [
                     {
                         "title": _("Users"),
@@ -508,6 +532,7 @@ UNFOLD = {
         ],
     },
 }
+
 
 
 # ============================================================
