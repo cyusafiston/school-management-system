@@ -20,6 +20,13 @@ def validate_rwandan_phone(value):
         )
 
 class AcademicYear(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="academicyear_records",
+    )
     ACADEMIC_YEAR_CHOICES = [
         ('2024-2025', '2024-2025'),
         ('2025-2026', '2025-2026'),
@@ -35,6 +42,13 @@ class AcademicYear(models.Model):
         return self.name
 
 class Term(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="term_records",
+    )
     TERM_CHOICES = [
         ('Term 1', 'Term 1'),
         ('Term 2', 'Term 2'),
@@ -55,6 +69,13 @@ from django.utils.text import slugify
 
 
 class ClassStream(models.Model):
+  school = models.ForeignKey(
+      "tenants.School",
+      on_delete=models.PROTECT,
+      null=True,
+      blank=True,
+      related_name="classstream_records",
+  )
   name = models.CharField(max_length=50)
   code = models.CharField(max_length=20, unique=True, blank=True)
 
@@ -73,6 +94,13 @@ class ClassStream(models.Model):
     return f'{self.name} ({self.code})'
 
 class StudentProfile(models.Model):
+  school = models.ForeignKey(
+      "tenants.School",
+      on_delete=models.PROTECT,
+      null=True,
+      blank=True,
+      related_name="studentprofile_records",
+  )
   user = models.OneToOneField(
       User, on_delete=models.CASCADE, null=True, blank=True
   )
@@ -199,6 +227,13 @@ from django.db import models
 from django.core.exceptions import ValidationError
 
 class Subject(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="subject_records",
+    )
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=20, unique=True, blank=True)
     description = models.TextField(blank=True, null=True)
