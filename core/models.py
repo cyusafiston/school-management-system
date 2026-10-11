@@ -259,6 +259,14 @@ from django.db import models
 from django.core.exceptions import ValidationError
 
 class Grade(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="grade_records",
+    )
+
     student = models.ForeignKey('StudentProfile', on_delete=models.CASCADE, related_name='grades')
     subject = models.ForeignKey('Subject', on_delete=models.CASCADE, related_name='grades')
     term = models.ForeignKey('Term', on_delete=models.CASCADE)
@@ -361,6 +369,14 @@ def create_user_profile(sender, instance, created, **kwargs):
         UserProfile.objects.get_or_create(user=instance, defaults={'role': assigned_role})
 
 class TeacherAssignment(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="teacherassignment_records",
+    )
+
     teacher = models.ForeignKey(User, on_delete=models.CASCADE, limit_choices_to={'profile__role': 'Teacher'})
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     current_class = models.ForeignKey(ClassStream, on_delete=models.CASCADE)
@@ -370,6 +386,14 @@ class TeacherAssignment(models.Model):
         return f"{self.teacher.username} teaches {self.subject.name} in {self.current_class.name}"
 
 class Homework(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="homework_records",
+    )
+
     assignment = models.ForeignKey(TeacherAssignment, on_delete=models.CASCADE, related_name='homeworks')
     title = models.CharField(max_length=255)
     description = models.TextField()
@@ -381,6 +405,14 @@ class Homework(models.Model):
         return f"{self.title} - {self.assignment.subject.name}"
 
 class Attendance(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="attendance_records",
+    )
+
     STATUS_CHOICES = [
         ('Present', 'Present'),
         ('Absent', 'Absent'),
@@ -401,6 +433,14 @@ class Attendance(models.Model):
         return f"{self.student} - {self.date} ({self.status})"
 
 class StudentEnrollment(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="studentenrollment_records",
+    )
+
     STATUS_CHOICES = [
         ('Active', 'Active'),
         ('Completed', 'Completed'),
@@ -422,6 +462,14 @@ class StudentEnrollment(models.Model):
         return f"{self.student} - {self.class_stream} ({self.academic_year}, {self.term})"
 
 class DailyClassAttendance(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="dailyclassattendance_records",
+    )
+
     STATUS_INFO_CHOICES = [
         ('Present', 'Present'),
         ('Late', 'Late'),
@@ -442,6 +490,14 @@ class DailyClassAttendance(models.Model):
         return f"{self.student} - {self.status} ({self.date})"
 
 class Notice(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="notice_records",
+    )
+
     title = models.CharField(max_length=200)
     content = models.TextField()
     target_class = models.ForeignKey(ClassStream, on_delete=models.CASCADE, null=True, blank=True, help_text="Leave blank for school-wide notices.")
@@ -453,6 +509,14 @@ class Notice(models.Model):
     from django.db import models
 
 class FeeCategory(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="feecategory_records",
+    )
+
     """Categories like Tuition, Transport, Lunch, Examination, etc."""
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
@@ -464,6 +528,14 @@ class FeeCategory(models.Model):
         return self.name
 
 class FeeStructure(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="feestructure_records",
+    )
+
     """Defines how much a class pays for a specific category, term, and academic year."""
     academic_year = models.ForeignKey('AcademicYear', on_delete=models.CASCADE)
     term = models.ForeignKey('Term', on_delete=models.CASCADE)
@@ -478,6 +550,14 @@ class FeeStructure(models.Model):
         return f"{self.class_stream} - {self.category.name} ({self.academic_year} {self.term}): {self.amount} RWF"
 
 class StudentFee(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="studentfee_records",
+    )
+
     """Tracks the total expected fee assigned to an individual student for a term."""
     student = models.ForeignKey('StudentProfile', on_delete=models.PROTECT, related_name='assigned_fees')
     academic_year = models.ForeignKey('AcademicYear', on_delete=models.PROTECT)
@@ -501,6 +581,14 @@ from django.conf import settings
 from django.utils import timezone
 
 class Payment(models.Model):
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_records",
+    )
+
     PAYMENT_METHOD_CHOICES = [
         ('Cash', 'Cash'),
         ('Bank Deposit', 'Bank Deposit'),
