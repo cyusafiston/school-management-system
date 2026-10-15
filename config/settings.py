@@ -41,7 +41,29 @@ SECRET_KEY = os.environ.get(
 # Read DEBUG from environment, default to False in production
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = ["*"]
+# Explicitly permitted hosts; extend through ALLOWED_HOSTS environment variable.
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "school-management-system-zez0.onrender.com",
+]
+
+ALLOWED_HOSTS += [
+    host.strip()
+    for host in os.environ.get("ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
+
+# Render sets RENDER=true on deployed services.
+IS_RENDER = os.environ.get("RENDER", "").lower() == "true"
+
+SESSION_COOKIE_SECURE = IS_RENDER
+CSRF_COOKIE_SECURE = IS_RENDER
+SECURE_SSL_REDIRECT = IS_RENDER
+
+if IS_RENDER:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 
 CSRF_TRUSTED_ORIGINS = [
     "https://starfish-trilogy-albatross.ngrok-free.dev",

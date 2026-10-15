@@ -71,7 +71,7 @@
                                     <td>{{ student }}</td>
                                     <td>
                                         {% if already_submitted %}
-                                            {% with record=student.dailyclassattendance_set.all|dictsortreversed:"date"|first %}
+                                            {% with record=student.today_attendance %}
                                                 <span class="badge 
                                                     {% if record.status == 'Present' %}bg-success
                                                     {% elif record.status == 'Late' %}bg-warning text-dark

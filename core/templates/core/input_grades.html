@@ -1,3 +1,4 @@
+{% load grade_form_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18,6 +19,25 @@
         input[type="number"]:focus { border-color: #38bdf8; outline: none; }
         .save-btn { margin-top: 25px; background: #22c55e; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 15px; }
         .save-btn:hover { background: #16a34a; }
+        .message { padding: 12px 16px; margin: 12px 0; border-radius: 6px; background: #334155; }
+        .message.success { border-left: 4px solid #22c55e; }
+        .message.error { border-left: 4px solid #ef4444; }
+        .message.warning { border-left: 4px solid #f59e0b; }
+        .status-finalized { color: #4ade80; font-weight: bold; }
+        .status-draft { color: #fbbf24; font-weight: bold; }
+        .status-empty { color: #94a3b8; }
+        .finalize-btn {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: #0284c7;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .finalize-btn:hover { background: #0369a1; }
+        .finalization-forms { display: none; }
         .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; background: #334155; color: #38bdf8; }
     </style>
 </head>
@@ -27,6 +47,16 @@
         <h1>Input Grades: {{ assignment.subject.name }}</h1>
         <p>Class: <strong>{{ assignment.current_class.name }}</strong> | Term: <strong>{{ assignment.term }}</strong></p>
         <p style="font-size: 13px; color: #64748b;">Max CAT Marks: {{ assignment.subject.max_cat_marks }} | Max Exam Marks: {{ assignment.subject.max_exam_marks }}</p>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="message {{ message.tags }}" role="alert">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        <p style="font-size: 13px;">
+            Finalized grades are locked against ordinary edits.
+        </p>
 
         <form method="POST">
             {% csrf_token %}
@@ -42,6 +72,7 @@
                         <th>%</th>
                         <th>Grade</th>
                         <th>Remarks</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -51,23 +82,42 @@
                         <td><strong>{{ student.first_name }} {{ student.last_name }}</strong></td>
                         <td style="color: #94a3b8; font-size: 13px;">{{ student.registration_number }}</td>
                         <td>
-                            <input type="number" step="0.01" name="cat_{{ student.id }}" 
-                                   value="{{ student.grade.cat_marks|default:'0.00' }}" 
+                            <input type="number" step="0.01" name="cat_{{ student.id }}" {% if student.grade.status == "Finalized" %}readonly{% endif %}
+                                   value="{{ student|grade_cat_value:submitted_marks|default_if_none:'' }}"
                                    min="0" max="{{ assignment.subject.max_cat_marks }}">
                         </td>
                         <td>
-                            <input type="number" step="0.01" name="exam_{{ student.id }}" 
-                                   value="{{ student.grade.exam_marks|default:'0.00' }}" 
+                            <input type="number" step="0.01" name="exam_{{ student.id }}" {% if student.grade.status == "Finalized" %}readonly{% endif %}
+                                   value="{{ student|grade_exam_value:submitted_marks }}"
                                    min="0" max="{{ assignment.subject.max_exam_marks }}">
                         </td>
                         <td><strong>{{ student.grade.marks_obtained|default:'0.00' }}</strong></td>
                         <td><strong>{{ student.grade.percentage|default:'0.00' }}%</strong></td>
                         <td><span class="badge">{{ student.grade.grade_letter|default:'-' }}</span></td>
                         <td style="color: #94a3b8; font-size: 13px;">{{ student.grade.remarks|default:'-' }}</td>
+                        <td>
+                            {% if student.grade.status == "Finalized" %}
+                                <span class="status-finalized">Finalized</span>
+                            {% elif student.grade %}
+                                <span class="status-draft">Draft</span>
+                                <div>
+                                    <button
+                                        type="submit"
+                                        class="finalize-btn"
+                                        form="finalize-grade-{{ student.grade.pk }}"
+                                        onclick="return confirm('Finalize this grade? You will not be able to edit it afterward.');"
+                                    >
+                                        Finalize
+                                    </button>
+                                </div>
+                            {% else %}
+                                <span class="status-empty">Not Graded</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="9" style="text-align: center; padding: 30px; color: #64748b;">No students found enrolled in this class stream yet.</td>
+                        <td colspan="10" style="text-align: center; padding: 30px; color: #64748b;">No students found enrolled in this class stream yet.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -76,6 +126,21 @@
             <button type="submit" class="save-btn">Save All Grades</button>
             {% endif %}
         </form>
+
+        <div class="finalization-forms">
+            {% for student in students %}
+                {% if student.grade and student.grade.status == "Draft" %}
+                    <form
+                        id="finalize-grade-{{ student.grade.pk }}"
+                        method="POST"
+                        action="{% url 'finalize_grade' assignment.pk student.grade.pk %}"
+                    >
+                        {% csrf_token %}
+                        <input type="hidden" name="confirm_finalize" value="yes">
+                    </form>
+                {% endif %}
+            {% endfor %}
+        </div>
     </div>
 </body>
 </html>

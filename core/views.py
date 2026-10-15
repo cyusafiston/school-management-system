@@ -1,3 +1,6 @@
+from django.views.decorators.http import require_POST
+from django.core.exceptions import PermissionDenied
+from tenants.access import require_school_context
 from decimal import Decimal, InvalidOperation
 from django.http import HttpResponse, Http404 # Add HttpResponse here
 from datetime import datetime, date
@@ -115,28 +118,33 @@ def custom_login_view(request):
 
 
 def redirect_based_on_role(request):
+    """
+    Redirect users using their approved school membership,
+    not the legacy global UserProfile role.
+    """
     user = request.user
 
     if not user.is_authenticated:
         return redirect("login")
 
-    role = get_user_role(user)
-
-    if is_accountant(user):
-        return redirect("accountant_dashboard")
-
-    if role == ROLE_TEACHER:
-        return redirect("teacher_dashboard")
-
-    if role == ROLE_STUDENT:
-        return redirect("student_dashboard")
-
-    if is_admin(user):
+    # Platform superusers use the platform administration interface.
+    if user.is_active and user.is_superuser:
         return redirect("admin:index")
 
-    logout(request)
-    messages.error(request, "Your account lacks a valid role configuration.")
-    return redirect("login")
+    # School users must belong to exactly one approved school.
+    try:
+        require_school_context(user)
+    except (PermissionDenied, Http404):
+        logout(request)
+        messages.error(
+            request,
+            "Your school access is unavailable. "
+            "Please contact your school administrator."
+        )
+        return redirect("login")
+
+    # Do not send users to the old, unscoped dashboards.
+    return redirect("school_home")
 
 
 @login_required
@@ -146,206 +154,571 @@ def role_based_redirect_view(request):
 
 @login_required
 def teacher_dashboard(request):
-    if is_teacher(request.user):
-        current_term = Term.objects.filter(is_current=True).first()
+    """Tenant-isolated teacher dashboard."""
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-        assignments = TeacherAssignment.objects.filter(teacher=request.user)
-        if current_term:
-            term_assignments = assignments.filter(term=current_term)
-        else:
-            term_assignments = assignments
+    context = require_school_context(request.user)
+    require_school_role(context, "teacher")
 
-        context = {
-            'assignments': term_assignments,
-            'current_term': current_term,
-        }
-        return render(request, 'core/teacher_dashboard.html', context)
-    else:
-        messages.error(request, "Access denied. This page is for teachers only.")
-        return redirect('/login/')
+    current_term = (
+        school_queryset(Term, context)
+        .filter(is_current=True)
+        .order_by("pk")
+        .first()
+    )
+
+    assignments = (
+        school_queryset(TeacherAssignment, context)
+        .filter(
+            teacher=request.user,
+            current_class__school=context.school,
+            subject__school=context.school,
+            term__school=context.school,
+        )
+        .select_related("subject", "current_class", "term")
+    )
+
+    if current_term:
+        assignments = assignments.filter(term=current_term)
+
+    return render(
+        request,
+        "core/teacher_dashboard.html",
+        {
+            "assignments": assignments,
+            "current_term": current_term,
+            "school": context.school,
+        },
+    )
 
 
 @login_required
 def teacher_classes_view(request):
-    if not is_teacher(request.user):
-        messages.error(request, "Access denied. This page is for teachers only.")
-        return redirect('/login/')
+    """Display only the approved teacher's school assignments."""
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-    current_term = Term.objects.filter(is_current=True).first()
-    assignments = TeacherAssignment.objects.filter(teacher=request.user)
+    context = require_school_context(request.user)
+    require_school_role(context, "teacher")
+
+    current_term = (
+        school_queryset(Term, context)
+        .filter(is_current=True)
+        .order_by("pk")
+        .first()
+    )
+
+    assignments = (
+        school_queryset(TeacherAssignment, context)
+        .filter(
+            teacher=request.user,
+            subject__school=context.school,
+            current_class__school=context.school,
+            term__school=context.school,
+        )
+        .select_related("subject", "current_class", "term")
+    )
+
     if current_term:
         assignments = assignments.filter(term=current_term)
 
-    context = {
-        'assignments': assignments,
-    }
-    return render(request, 'core/teacher_classes.html', context)
+    return render(
+        request,
+        "core/teacher_classes.html",
+        {
+            "assignments": assignments,
+            "current_term": current_term,
+            "school": context.school,
+        },
+    )
+
+
+
+@login_required
+@require_POST
+def finalize_grade_view(request, assignment_id, grade_id):
+    """Finalize one draft grade for the teacher's own active enrollment."""
+    from django.db import transaction
+    from django.http import HttpResponseBadRequest
+    from django.shortcuts import get_object_or_404, redirect
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    context = require_school_context(request.user)
+    require_school_role(context, "teacher")
+
+    assignment = get_object_or_404(
+        school_queryset(TeacherAssignment, context).filter(
+            teacher=request.user,
+            subject__school=context.school,
+            current_class__school=context.school,
+            term__school=context.school,
+            term__academic_year__school=context.school,
+        ),
+        pk=assignment_id,
+    )
+
+    # The teacher's assignment must belong to the official curriculum.
+    from core.models import ClassSubject
+
+    curriculum_allowed = ClassSubject.objects.filter(
+        school=context.school,
+        academic_year=assignment.term.academic_year,
+        class_stream=assignment.current_class,
+        subject=assignment.subject,
+        academic_year__school=context.school,
+        class_stream__school=context.school,
+        subject__school=context.school,
+    ).exists()
+
+    if not curriculum_allowed:
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied(
+            "This subject is not configured in the class curriculum."
+        )
+
+
+    if request.POST.get("confirm_finalize") != "yes":
+        return HttpResponseBadRequest(
+            "Grade finalization requires explicit confirmation."
+        )
+
+    with transaction.atomic():
+        grade = get_object_or_404(
+            school_queryset(Grade, context)
+            .select_for_update()
+            .filter(
+                student__school=context.school,
+                subject=assignment.subject,
+                term=assignment.term,
+                subject__school=context.school,
+                term__school=context.school,
+            ),
+            pk=grade_id,
+        )
+
+        get_object_or_404(
+            school_queryset(StudentEnrollment, context).filter(
+                student=grade.student,
+                student__school=context.school,
+                academic_year=assignment.term.academic_year,
+                academic_year__school=context.school,
+                term=assignment.term,
+                term__school=context.school,
+                class_stream=assignment.current_class,
+                class_stream__school=context.school,
+                status="Active",
+            )
+        )
+
+        if grade.status != "Draft":
+            return HttpResponseBadRequest(
+                "Only draft grades can be finalized."
+            )
+
+        from django.utils import timezone
+
+        grade.status = "Finalized"
+        grade.finalized_by = request.user
+        grade.finalized_at = timezone.now()
+        grade.save()
+
+    messages.success(request, "Grade finalized successfully.")
+    return redirect("input_grades", assignment_id=assignment.pk)
 
 
 @login_required
 def input_grades_view(request, assignment_id):
-    if not is_teacher(request.user):
-        messages.error(request, "Access denied.")
-        return redirect('/login/')
+    """Secure, atomic grade entry for a teacher's own assignment."""
+    from django.core.exceptions import ValidationError
+    from django.db import transaction
+    from django.shortcuts import get_object_or_404
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-    assignment = teacher_assignment_for_user(request, assignment_id)
-    if assignment is None:
-        return deny_and_redirect(
-            request,
-            "Access denied. This assignment does not belong to you.",
+    context = require_school_context(request.user)
+    require_school_role(context, "teacher")
+
+    assignment = get_object_or_404(
+        school_queryset(TeacherAssignment, context).filter(
+            teacher=request.user,
+            subject__school=context.school,
+            current_class__school=context.school,
+            term__school=context.school,
+            term__academic_year__school=context.school,
+        ).select_related(
+            "subject", "current_class", "term", "term__academic_year",
+        ),
+        pk=assignment_id,
+    )
+
+    # The teacher's assignment must belong to the official curriculum.
+    from core.models import ClassSubject
+
+    curriculum_allowed = ClassSubject.objects.filter(
+        school=context.school,
+        academic_year=assignment.term.academic_year,
+        class_stream=assignment.current_class,
+        subject=assignment.subject,
+        academic_year__school=context.school,
+        class_stream__school=context.school,
+        subject__school=context.school,
+    ).exists()
+
+    if not curriculum_allowed:
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied(
+            "This subject is not configured in the class curriculum."
         )
 
-    class_stream = assignment.current_class
-    subject = assignment.subject
-    term = assignment.term
 
-    students = StudentProfile.objects.filter(current_class=class_stream).order_by('id')
+    enrollments = (
+        school_queryset(StudentEnrollment, context)
+        .filter(
+            academic_year=assignment.term.academic_year,
+            term=assignment.term,
+            class_stream=assignment.current_class,
+            status="Active",
+            student__school=context.school,
+            academic_year__school=context.school,
+            term__school=context.school,
+            class_stream__school=context.school,
+        )
+        .select_related("student")
+        .order_by("student__id")
+    )
 
-    if request.method == 'POST':
-        for student in students:
-            cat_key = f'cat_{student.id}'
-            exam_key = f'exam_{student.id}'
+    students = [enrollment.student for enrollment in enrollments]
+    student_ids = [student.pk for student in students]
 
-            if cat_key in request.POST and exam_key in request.POST:
-                try:
-                    cat_val = Decimal(request.POST.get(cat_key) or '0.00')
-                    exam_val = Decimal(request.POST.get(exam_key) or '0.00')
-
-                    grade_obj, created = Grade.objects.get_or_create(
-                        student=student,
-                        subject=subject,
-                        term=term,
-                        defaults={'cat_marks': cat_val, 'exam_marks': exam_val}
-                    )
-
-                    if not created:
-                        grade_obj.cat_marks = cat_val
-                        grade_obj.exam_marks = exam_val
-                    
-                    grade_obj.save() # Triggers calculations & full_clean
-
-                except (InvalidOperation, ValueError, TypeError):
-                    messages.error(
-                        request,
-                        f"Invalid marks entered for student {student.id}.",
-                    )
-                    continue
-
-        messages.success(request, f"Grades for {class_stream.name} - {subject.name} saved successfully!")
-        return redirect('teacher_dashboard')
-
-    # Attach the specific grade object directly to each student for clean template rendering
-    grades_map = {g.student_id: g for g in Grade.objects.filter(subject=subject, term=term, student__in=students)}
-    for student in students:
-        student.grade = grades_map.get(student.id)
-
-    context = {
-        'assignment': assignment,
-        'students': students,
+    grades_map = {
+        grade.student_id: grade
+        for grade in school_queryset(Grade, context).filter(
+            student_id__in=student_ids,
+            student__school=context.school,
+            subject=assignment.subject,
+            term=assignment.term,
+            subject__school=context.school,
+            term__school=context.school,
+        )
     }
-    return render(request, 'core/input_grades.html', context)
+
+    for student in students:
+        student.grade = grades_map.get(student.pk)
+
+    if request.method == "POST":
+        from decimal import Decimal, InvalidOperation
+
+        errors = []
+        pending = []
+
+        for student in students:
+            cat_key = f"cat_{student.pk}"
+            exam_key = f"exam_{student.pk}"
+
+            cat_raw = request.POST.get(cat_key, "").strip()
+            exam_raw = request.POST.get(exam_key, "").strip()
+
+            if not cat_raw and not exam_raw:
+                continue
+
+            if not cat_raw or not exam_raw:
+                errors.append(
+                    f"{student}: Both CAT and exam marks are required."
+                )
+                continue
+
+            try:
+                cat_marks = Decimal(cat_raw)
+                exam_marks = Decimal(exam_raw)
+            except (InvalidOperation, ValueError):
+                errors.append(f"{student}: Invalid numeric marks.")
+                continue
+
+            existing = grades_map.get(student.pk)
+
+            if existing and existing.status == "Finalized":
+                errors.append(
+                    f"{student}: Finalized grades cannot be edited."
+                )
+                continue
+
+            if existing:
+                from copy import copy
+                grade = copy(existing)
+            else:
+                grade = Grade(
+                    school=context.school,
+                    student=student,
+                    subject=assignment.subject,
+                    term=assignment.term,
+                    status="Draft",
+                )
+
+            grade.cat_marks = cat_marks
+            grade.exam_marks = exam_marks
+
+            try:
+                grade.full_clean()
+            except ValidationError as exc:
+                errors.append(f"{student}: {exc}")
+                continue
+
+            pending.append(grade)
+
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+        elif not pending:
+            messages.warning(request, "No grades were submitted.")
+        else:
+            try:
+                with transaction.atomic():
+                    for grade in pending:
+                        grade.save()
+            except ValidationError as exc:
+                messages.error(
+                    request,
+                    f"Grades were not saved: {exc}",
+                )
+            else:
+                messages.success(
+                    request,
+                    f"{len(pending)} grade record(s) saved successfully.",
+                )
+                return redirect(
+                    "class_students",
+                    assignment_id=assignment.pk,
+                )
+
+    return render(
+        request,
+        "core/input_grades.html",
+        {
+            "assignment": assignment,
+            "students": students,
+            "submitted_marks": request.POST if request.method == "POST" else None,
+        },
+    )
 
 
 @login_required
 def class_students_view(request, assignment_id):
-    if not is_teacher(request.user):
-        messages.error(request, "Access denied.")
-        return redirect('/login/')
+    """Show active students for a teacher's own school assignment."""
+    from django.shortcuts import get_object_or_404
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-    assignment = teacher_assignment_for_user(request, assignment_id)
-    if assignment is None:
-        return deny_and_redirect(
-            request,
-            "Access denied. This assignment does not belong to you.",
+    context = require_school_context(request.user)
+    require_school_role(context, "teacher")
+
+    assignment = get_object_or_404(
+        school_queryset(TeacherAssignment, context).filter(
+            teacher=request.user,
+            subject__school=context.school,
+            current_class__school=context.school,
+            term__school=context.school,
+            term__academic_year__school=context.school,
+        ).select_related(
+            "subject",
+            "current_class",
+            "term",
+            "term__academic_year",
+        ),
+        pk=assignment_id,
+    )
+
+    enrollments = (
+        school_queryset(StudentEnrollment, context)
+        .filter(
+            academic_year=assignment.term.academic_year,
+            term=assignment.term,
+            class_stream=assignment.current_class,
+            status="Active",
+            student__school=context.school,
+            academic_year__school=context.school,
+            term__school=context.school,
+            class_stream__school=context.school,
         )
-    class_stream = assignment.current_class
-    subject = assignment.subject
+        .select_related("student")
+        .order_by("student__id")
+    )
 
-    students = StudentProfile.objects.filter(current_class=class_stream).order_by('id')
-    
-    student_data = []
-    for student in students:
-        grade = Grade.objects.filter(
-            student=student,
-            subject=subject,
-            term=assignment.term
-        ).first()
-        
-        attendance_records = Attendance.objects.filter(student=student)
-        present_count = attendance_records.filter(status='Present').count()
-        absent_count = attendance_records.filter(status='Absent').count()
-        late_count = attendance_records.filter(status='Late').count()
-        
-        student_data.append({
-            'student': student,
-            'grade': grade,
-            'present': present_count,
-            'absent': absent_count,
-            'late': late_count,
-        })
+    student_data = [
+        {
+            "student": enrollment.student,
+            "grade": None,
+            "present": 0,
+            "absent": 0,
+            "late": 0,
+        }
+        for enrollment in enrollments
+    ]
 
-    context = {
-        'assignment': assignment,
-        'class_stream': class_stream,
-        'subject': subject,
-        'student_data': student_data,
-    }
-    return render(request, 'core/class_students.html', context)
+    return render(
+        request,
+        "core/class_students.html",
+        {
+            "assignment": assignment,
+            "class_stream": assignment.current_class,
+            "subject": assignment.subject,
+            "student_data": student_data,
+        },
+    )
 
 
 @login_required
 def take_attendance_view(request, assignment_id):
-    if not is_teacher(request.user):
-        messages.error(request, "Access denied.")
-        return redirect('/login/')
+    from datetime import date as attendance_date_type
+    from django.core.exceptions import ValidationError
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-    assignment = teacher_assignment_for_user(request, assignment_id)
-    if assignment is None:
-        return deny_and_redirect(
-            request,
-            "Access denied. This assignment does not belong to you.",
+    context = require_school_context(request.user)
+    require_school_role(context, "teacher")
+
+    assignment = get_object_or_404(
+        school_queryset(TeacherAssignment, context)
+        .select_related("current_class", "subject", "term"),
+        pk=assignment_id,
+        teacher=request.user,
+        subject__school=context.school,
+        current_class__school=context.school,
+        term__school=context.school,
+        term__academic_year__school=context.school,
+    )
+
+    students = school_queryset(
+        StudentProfile, context
+    ).filter(
+        current_class=assignment.current_class,
+    ).order_by("id")
+
+    raw_date = (
+        request.POST.get("attendance_date")
+        if request.method == "POST"
+        else request.GET.get("date")
+    ) or date.today().isoformat()
+
+    try:
+        attendance_date = attendance_date_type.fromisoformat(
+            str(raw_date)
         )
-    class_stream = assignment.current_class
-    students = StudentProfile.objects.filter(current_class=class_stream).order_by('id')
-
-    attendance_date = request.GET.get('date', str(date.today()))
-
-    if request.method == 'POST':
-        attendance_date = request.POST.get('attendance_date', date.today())
-        for student in students:
-            status_key = f'status_{student.id}'
-            status_val = request.POST.get(status_key, 'Present')
-
-            Attendance.objects.update_or_create(
-                student=student,
-                assignment=assignment,
-                date=attendance_date,
-                defaults={
-                    'status': status_val,
-                    'recorded_by': request.user
-                }
+    except (ValueError, TypeError):
+        if request.method == "POST":
+            messages.error(request, "Invalid attendance date.")
+            return redirect(
+                "class_students",
+                assignment_id=assignment.id,
             )
-        messages.success(request, f"Attendance for {attendance_date} saved successfully!")
-        return redirect('class_students', assignment_id=assignment.id)
+        raise Http404("Invalid attendance date.")
+
+    if request.method == "POST":
+        valid_statuses = {"Present", "Absent", "Late"}
+        student_list = list(students)
+        statuses = {}
+
+        for student in student_list:
+            status = request.POST.get(
+                f"status_{student.id}"
+            )
+            if status not in valid_statuses:
+                messages.error(
+                    request,
+                    "Every student must have a valid "
+                    "attendance status.",
+                )
+                return redirect(
+                    request.path
+                    + "?date="
+                    + attendance_date.isoformat()
+                )
+            statuses[student.id] = status
+
+        try:
+            with transaction.atomic():
+                for student in student_list:
+                    Attendance.objects.update_or_create(
+                        school=context.school,
+                        student=student,
+                        assignment=assignment,
+                        date=attendance_date,
+                        defaults={
+                            "status": statuses[student.id],
+                            "recorded_by": request.user,
+                        },
+                    )
+        except ValidationError:
+            messages.error(
+                request,
+                "Attendance could not be saved. "
+                "Please check the selected records.",
+            )
+            return redirect(
+                request.path
+                + "?date="
+                + attendance_date.isoformat()
+            )
+
+        messages.success(
+            request,
+            f"Attendance for {attendance_date} "
+            "saved successfully!",
+        )
+        return redirect(
+            "class_students",
+            assignment_id=assignment.id,
+        )
 
     existing_attendance = {
-        a.student_id: a.status 
-        for a in Attendance.objects.filter(assignment=assignment, date=attendance_date)
+        attendance.student_id: attendance.status
+        for attendance in school_queryset(
+            Attendance, context
+        ).filter(
+            assignment=assignment,
+            date=attendance_date,
+        )
     }
 
-    student_data = []
-    for student in students:
-        student_data.append({
-            'student': student,
-            'status': existing_attendance.get(student.id, 'Present')
-        })
+    student_data = [
+        {
+            "student": student,
+            "status": existing_attendance.get(
+                student.id, "Present"
+            ),
+        }
+        for student in students
+    ]
 
-    context = {
-        'assignment': assignment,
-        'student_data': student_data,
-        'attendance_date': attendance_date,
-    }
-    return render(request, 'core/take_attendance.html', context)
+    return render(
+        request,
+        "core/take_attendance.html",
+        {
+            "assignment": assignment,
+            "student_data": student_data,
+            "attendance_date": attendance_date,
+        },
+    )
+
 
 
 @login_required
@@ -373,167 +746,382 @@ def student_academic_profile_view(request, student_id):
 
 @login_required
 def admin_attendance_report_view(request):
-    if not is_admin(request.user):
-        messages.error(request, "Access denied. Admins only.")
-        return redirect('/login/')
+    """School-isolated daily attendance report."""
+    from datetime import date, datetime
+    from django.shortcuts import render, get_object_or_404
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-    selected_date_str = request.GET.get('date', str(date.today()))
+    school_context = require_school_context(request.user)
+    require_school_role(school_context, "administrator")
+
+    selected_date_str = request.GET.get(
+        "date", str(date.today())
+    )
+
     try:
-        parsed_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
-    except ValueError:
+        parsed_date = datetime.strptime(
+            selected_date_str, "%Y-%m-%d"
+        ).date()
+    except (ValueError, TypeError):
         parsed_date = date.today()
-        selected_date_str = str(parsed_date)
+
+    selected_date_str = str(parsed_date)
 
     day = parsed_date.day
-    suffix = 'th' if 11 <= day <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
-    formatted_date_display = parsed_date.strftime(f'%B {day}{suffix}, %Y')
+    suffix = (
+        "th" if 11 <= day <= 13
+        else {1: "st", 2: "nd", 3: "rd"}.get(
+            day % 10, "th"
+        )
+    )
 
-    class_id = request.GET.get('class_id', '')
-    classes = ClassStream.objects.all()
+    formatted_date_display = parsed_date.strftime(
+        f"%B {day}{suffix}, %Y"
+    )
 
-    total_school_students = StudentProfile.objects.count()
-    school_attendance_qs = DailyClassAttendance.objects.filter(date=parsed_date)
+    classes = school_queryset(
+        ClassStream, school_context
+    )
+
+    class_id = request.GET.get("class_id", "")
+
+    if class_id:
+        selected_class = get_object_or_404(
+            classes, pk=class_id
+        )
+        class_id = str(selected_class.pk)
+
+    students = school_queryset(
+        StudentProfile, school_context
+    ).filter(
+        current_class__school=school_context.school
+    )
+
+    school_attendance_qs = school_queryset(
+        DailyClassAttendance, school_context
+    ).filter(
+        date=parsed_date,
+        student__school=school_context.school,
+        current_class__school=school_context.school,
+    )
+
+    total_school_students = school_queryset(
+        StudentProfile, school_context
+    ).count()
+
     total_records = school_attendance_qs.count()
-    present_count = school_attendance_qs.filter(status='Present').count()
-    late_count = school_attendance_qs.filter(status='Late').count()
-    absent_count = school_attendance_qs.filter(status='Absent').count()
+    present_count = school_attendance_qs.filter(
+        status="Present"
+    ).count()
+    late_count = school_attendance_qs.filter(
+        status="Late"
+    ).count()
+    absent_count = school_attendance_qs.filter(
+        status="Absent"
+    ).count()
 
     class_summaries = []
+
     for class_obj in classes:
-        total_class_students = StudentProfile.objects.filter(current_class=class_obj).count()
-        
-        class_records = school_attendance_qs.filter(current_class=class_obj)
-        present = class_records.filter(status='Present').count()
-        late = class_records.filter(status='Late').count()
-        absent = class_records.filter(status='Absent').count()
-        
-        is_submitted = class_records.exists()
-        first_record = class_records.first()
-        submitted_by = first_record.submitted_by.username if is_submitted and first_record.submitted_by else None
+        class_records = school_attendance_qs.filter(
+            current_class=class_obj
+        )
+
+        first_record = class_records.select_related(
+            "submitted_by"
+        ).first()
+
+        submitted_by = (
+            first_record.submitted_by.username
+            if first_record and first_record.submitted_by
+            else None
+        )
 
         class_summaries.append({
-            'class_obj': class_obj,
-            'total_students': total_class_students,
-            'present_count': present,
-            'late_count': late,
-            'absent_count': absent,
-            'is_submitted': is_submitted,
-            'submitted_by': submitted_by,
+            "class_obj": class_obj,
+            "total_students": students.filter(
+                current_class=class_obj
+            ).count(),
+            "present_count": class_records.filter(
+                status="Present"
+            ).count(),
+            "late_count": class_records.filter(
+                status="Late"
+            ).count(),
+            "absent_count": class_records.filter(
+                status="Absent"
+            ).count(),
+            "is_submitted": first_record is not None,
+            "submitted_by": submitted_by,
         })
 
-    attendance_qs = school_attendance_qs.select_related('student', 'current_class', 'submitted_by')
+    attendance_qs = school_attendance_qs.select_related(
+        "student",
+        "current_class",
+        "submitted_by",
+    )
+
     if class_id:
-        attendance_qs = attendance_qs.filter(current_class_id=class_id)
+        attendance_qs = attendance_qs.filter(
+            current_class_id=class_id
+        )
 
     context = {
-        'formatted_date_display': formatted_date_display,
-        'class_summaries': class_summaries,
-        'attendance_records': attendance_qs,
-        'selected_date': selected_date_str,
-        'selected_class_id': class_id,
-        'classes': classes,
-        'total_school_students': total_school_students,
-        'total_records': total_records,
-        'present_count': present_count,
-        'late_count': late_count,
-        'absent_count': absent_count,
+        "formatted_date_display": formatted_date_display,
+        "class_summaries": class_summaries,
+        "attendance_records": attendance_qs,
+        "selected_date": selected_date_str,
+        "selected_class_id": class_id,
+        "classes": classes,
+        "total_school_students": total_school_students,
+        "total_records": total_records,
+        "present_count": present_count,
+        "late_count": late_count,
+        "absent_count": absent_count,
     }
-    return render(request, 'core/admin_attendance_report.html', context)
+
+    return render(
+        request,
+        "core/admin_attendance_report.html",
+        context,
+    )
+
 
 
 @login_required
 def admin_subject_attendance_report_view(request):
-    if not is_admin(request.user):
-        messages.error(request, "Access denied. Admins only.")
-        return redirect('/login/')
+    """School-isolated subject attendance report."""
+    from datetime import date, datetime
+    from django.shortcuts import render, get_object_or_404
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-    selected_date = request.GET.get('date', str(date.today()))
-    class_id = request.GET.get('class_id', '')
+    school_context = require_school_context(request.user)
+    require_school_role(school_context, "administrator")
 
-    attendance_qs = Attendance.objects.filter(date=selected_date).select_related('student', 'assignment__current_class', 'assignment__subject', 'recorded_by')
+    selected_date = request.GET.get(
+        "date", str(date.today())
+    )
+
+    try:
+        parsed_date = datetime.strptime(
+            selected_date, "%Y-%m-%d"
+        ).date()
+    except (ValueError, TypeError):
+        parsed_date = date.today()
+
+    selected_date = str(parsed_date)
+
+    classes = school_queryset(
+        ClassStream, school_context
+    )
+
+    class_id = request.GET.get("class_id", "")
 
     if class_id:
-        attendance_qs = attendance_qs.filter(assignment__current_class_id=class_id)
+        selected_class = get_object_or_404(
+            classes, pk=class_id
+        )
+        class_id = str(selected_class.pk)
+
+    attendance_qs = school_queryset(
+        Attendance, school_context
+    ).filter(
+        date=parsed_date,
+        student__school=school_context.school,
+        assignment__school=school_context.school,
+        assignment__current_class__school=school_context.school,
+        assignment__subject__school=school_context.school,
+    ).select_related(
+        "student",
+        "assignment__current_class",
+        "assignment__subject",
+        "recorded_by",
+    )
+
+    if class_id:
+        attendance_qs = attendance_qs.filter(
+            assignment__current_class_id=class_id
+        )
 
     context = {
-        'attendance_records': attendance_qs,
-        'selected_date': selected_date,
-        'selected_class_id': class_id,
-        'classes': ClassStream.objects.all(),
-        'total_records': attendance_qs.count(),
-        'present_count': attendance_qs.filter(status='Present').count(),
-        'late_count': attendance_qs.filter(status='Late').count(),
-        'absent_count': attendance_qs.filter(status='Absent').count(),
+        "attendance_records": attendance_qs,
+        "selected_date": selected_date,
+        "selected_class_id": class_id,
+        "classes": classes,
+        "total_records": attendance_qs.count(),
+        "present_count": attendance_qs.filter(
+            status="Present"
+        ).count(),
+        "late_count": attendance_qs.filter(
+            status="Late"
+        ).count(),
+        "absent_count": attendance_qs.filter(
+            status="Absent"
+        ).count(),
     }
-    return render(request, 'core/admin_subject_attendance_report.html', context)
+
+    return render(
+        request,
+        "core/admin_subject_attendance_report.html",
+        context,
+    )
+
 
 
 @login_required
 def take_daily_attendance(request, class_id=None):
-    user_profile = getattr(request.user, 'profile', None)
-    if not user_profile or user_profile.role.lower() != 'teacher':
-        messages.error(request, "Access denied. Only teachers can take and submit daily attendance.")
-        return redirect('role_redirect')
+    from django.core.exceptions import ValidationError
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-    classes = ClassStream.objects.all()
+    context = require_school_context(request.user)
+    require_school_role(context, "teacher")
+
+    assignments = school_queryset(
+        TeacherAssignment, context
+    ).filter(
+        teacher=request.user,
+        current_class__school=context.school,
+        subject__school=context.school,
+        term__school=context.school,
+        term__academic_year__school=context.school,
+    )
+
+    assigned_class_ids = assignments.values_list(
+        "current_class_id", flat=True
+    )
+
+    classes = school_queryset(
+        ClassStream, context
+    ).filter(
+        pk__in=assigned_class_ids
+    ).distinct().order_by("name")
+
     selected_class = None
     students = []
     already_submitted = False
+    attendance_by_student = {}
     current_date = date.today()
 
-    if class_id:
-        selected_class = get_object_or_404(ClassStream, id=class_id)
+    if class_id is not None:
+        selected_class = get_object_or_404(
+            classes,
+            pk=class_id,
+        )
 
-        if not teacher_can_access_class(request.user, selected_class):
-            return deny_and_redirect(
-                request,
-                "Access denied. You are not assigned to this class.",
+        students = list(
+            school_queryset(StudentProfile, context)
+            .filter(current_class=selected_class)
+            .order_by("id")
+        )
+
+        today_records = school_queryset(
+            DailyClassAttendance, context
+        ).filter(
+            current_class=selected_class,
+            date=current_date,
+            student__school=context.school,
+            student__current_class=selected_class,
+        )
+
+        attendance_by_student = {
+            record.student_id: record
+            for record in today_records.order_by("pk")
+        }
+
+        already_submitted = bool(attendance_by_student)
+
+        for student in students:
+            student.today_attendance = (
+                attendance_by_student.get(student.pk)
             )
 
-        students = StudentProfile.objects.filter(
-            current_class=selected_class
-        ).order_by("id")
-
-        already_submitted = DailyClassAttendance.objects.filter(
-            current_class=selected_class,
-            date=current_date
-        ).exists()
-
-        if request.method == 'POST' and not already_submitted:
-            valid_statuses = ['Present', 'Late', 'Absent']
-            attendance_data_to_create = []
-            has_error = False
-
-            for student in students:
-                status_val = request.POST.get(f'status_{student.id}')
-                if status_val not in valid_statuses:
-                    has_error = True
-                    break
-                attendance_data_to_create.append(
-                    DailyClassAttendance(
-                        student=student,
-                        current_class=selected_class,
-                        status=status_val,
-                        submitted_by=request.user,
-                        is_locked=True
-                    )
+        if request.method == "POST":
+            if already_submitted:
+                messages.error(
+                    request,
+                    "Attendance has already been submitted "
+                    "for this class today.",
                 )
-
-            if has_error or len(attendance_data_to_create) != students.count():
-                messages.error(request, "Submission failed: Every student must have a valid attendance status assigned.")
+            elif not students:
+                messages.error(
+                    request,
+                    "No students are assigned to this class.",
+                )
             else:
-                DailyClassAttendance.objects.bulk_create(attendance_data_to_create)
-                messages.success(request, f"Attendance for {selected_class.name} submitted and locked successfully!")
-                return redirect('take_daily_attendance_class', class_id=selected_class.id)
+                valid_statuses = {
+                    "Present", "Late", "Absent"
+                }
 
-    context = {
-        'classes': classes,
-        'selected_class': selected_class,
-        'students': students,
-        'already_submitted': already_submitted,
-        'today': current_date,
-    }
-    return render(request, 'core/take_daily_attendance.html', context)
+                statuses = {}
+
+                for student in students:
+                    status = request.POST.get(
+                        f"status_{student.id}"
+                    )
+                    if status not in valid_statuses:
+                        messages.error(
+                            request,
+                            "Every student must have a valid "
+                            "attendance status.",
+                        )
+                        break
+                    statuses[student.id] = status
+                else:
+                    try:
+                        with transaction.atomic():
+                            for student in students:
+                                record = DailyClassAttendance(
+                                    school=context.school,
+                                    student=student,
+                                    current_class=selected_class,
+                                    status=statuses[student.id],
+                                    submitted_by=request.user,
+                                    is_locked=True,
+                                )
+                                record.save()
+                    except ValidationError:
+                        messages.error(
+                            request,
+                            "Attendance could not be saved. "
+                            "Please verify the student records.",
+                        )
+                    else:
+                        messages.success(
+                            request,
+                            f"Attendance for "
+                            f"{selected_class.name} "
+                            "submitted and locked successfully!",
+                        )
+                        return redirect(
+                            "take_daily_attendance_class",
+                            class_id=selected_class.pk,
+                        )
+
+    return render(
+        request,
+        "core/take_daily_attendance.html",
+        {
+            "classes": classes,
+            "selected_class": selected_class,
+            "students": students,
+            "already_submitted": already_submitted,
+            "attendance_by_student": attendance_by_student,
+            "today": current_date,
+        },
+    )
+
 
 
 @login_required
@@ -822,135 +1410,387 @@ def student_attendance_view(request):
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 
-@login_required
-def generate_student_report_card(request):
-    if not is_student(request.user):
-        return deny_and_redirect(request, "Access denied. Student portal only.")
 
-    student = get_object_or_404(StudentProfile, user=request.user)
-    
-    term_param = request.GET.get('term', '1')
-    scope = request.GET.get('scope', 'term')
-    
-    grades_qs = Grade.objects.filter(student=student)
-    attendance_records = Attendance.objects.filter(student=student)
-    
-    if scope == 'annual' or term_param == '3':
-        target_term_names = ['Term 1', 'Term 2', 'Term 3']
-        report_title = "Annual Academic & Attendance Report"
-        current_term_label = "Term 1, 2 & 3 (Annual)"
-    elif term_param == '2':
-        target_term_names = ['Term 1', 'Term 2']
-        report_title = "Cumulative Term 2 Report"
-        current_term_label = "Term 1 & 2 (Cumulative)"
-    else:
-        target_term_names = ['Term 1']
-        report_title = "Term 1 Academic & Attendance Report"
-        current_term_label = "Term 1"
-        
-    filtered_grades = grades_qs.filter(term__name__in=target_term_names)
+def get_student_report_data(student, school, academic_year_id, term_id):
+    """
+    Retrieve tenant-scoped academic records for one student's term report.
 
-    subject_summary = {}
-    for g in filtered_grades:
-        subj_name = g.subject.name
-        term_num = 1
-        if g.term and 'Term 2' in str(g.term.name): term_num = 2
-        elif g.term and 'Term 3' in str(g.term.name): term_num = 3
+    This helper does not generate a PDF or modify database records.
+    """
+    from core.models import AcademicYear, Term, StudentEnrollment, Grade, Attendance
+    from django.http import Http404
 
-        subject_max_cat = getattr(g.subject, 'max_cat_marks', Decimal('50.00')) or Decimal('50.00')
-        subject_max_exam = getattr(g.subject, 'max_exam_marks', Decimal('50.00')) or Decimal('50.00')
-        
-        max_cat = subject_max_cat
-        max_exam = subject_max_exam
-        max_total = max_cat + max_exam
+    academic_year = get_object_or_404(
+        AcademicYear,
+        pk=academic_year_id,
+        school=school,
+    )
 
-        if subj_name not in subject_summary:
-            subject_summary[subj_name] = {
-                'subject': g.subject,
-                'terms': {},
-            }
-            
-        subject_summary[subj_name]['terms'][term_num] = {
-            'grade_obj': g,
-            'cat_marks': g.cat_marks,
-            'max_cat': max_cat,
-            'exam_marks': g.exam_marks,
-            'max_exam': max_exam,
-            'marks_obtained': g.marks_obtained,
-            'max_marks': max_total,
-            'percentage': g.percentage,
-        }
+    term = get_object_or_404(
+        Term,
+        pk=term_id,
+        school=school,
+        academic_year=academic_year,
+    )
 
-    table_rows = []
-    total_percentage_sum = Decimal('0.00')
-    count_subjects = 0
+    enrollment = get_object_or_404(
+        StudentEnrollment.objects.select_related("class_stream"),
+        school=school,
+        student=student,
+        academic_year=academic_year,
+        term=term,
+    )
 
-    for subj_name, data in subject_summary.items():
-        term_percentages = [t_data['percentage'] for t_data in data['terms'].values() if t_data['percentage'] is not None]
-        final_pct = sum(term_percentages, Decimal('0.00')) / len(term_percentages) if term_percentages else Decimal('0.00')
-        
-        total_percentage_sum += final_pct
-        count_subjects += 1
-        
-        grade_ltr = 'F'
-        rem = 'Fail'
-        if final_pct >= 80: grade_ltr, rem = 'A', 'Excellent'
-        elif final_pct >= 70: grade_ltr, rem = 'B', 'Very Good'
-        elif final_pct >= 60: grade_ltr, rem = 'C', 'Good'
-        elif final_pct >= 50: grade_ltr, rem = 'D', 'Satisfactory'
+    grades = (
+        Grade.objects.filter(
+            school=school,
+            student=student,
+            term=term,
+            subject__school=school,
+            status="Finalized",
+        )
+        .select_related("subject")
+        .order_by("subject__name")
+    )
 
-        table_rows.append({
-            'subject_name': subj_name,
-            'terms': data['terms'],
-            'final_percentage': round(final_pct, 1),
-            'grade_letter': grade_ltr,
-            'remarks': rem
-        })
+    attendance = Attendance.objects.filter(
+        school=school,
+        student=student,
+        assignment__school=school,
+        assignment__term=term,
+    )
 
-    average_percentage = round(total_percentage_sum / count_subjects if count_subjects > 0 else Decimal('0.00'), 1)
-    
-    avg_grade_letter = 'F'
-    if average_percentage >= 80: avg_grade_letter = 'A'
-    elif average_percentage >= 70: avg_grade_letter = 'B'
-    elif average_percentage >= 60: avg_grade_letter = 'C'
-    elif average_percentage >= 50: avg_grade_letter = 'D'
-
-    total_records = attendance_records.count()
-    present_count = attendance_records.filter(status='Present').count()
-    late_count = attendance_records.filter(status='Late').count()
-    absent_count = attendance_records.filter(status='Absent').count()
-    
-    attendance_percentage = round((present_count / total_records * 100) if total_records > 0 else 0, 1)
-
-    context = {
-        'student_profile': student,
-        'attendance_records': attendance_records,
-        'grades': filtered_grades,
-        'table_rows': table_rows,
-        'average_percentage': average_percentage,
-        'avg_grade_letter': avg_grade_letter,
-        'attendance_percentage': attendance_percentage,
-        'present_count': present_count,
-        'late_count': late_count,
-        'absent_count': absent_count,
-        'total_records': total_records,
-        'current_term': current_term_label,
-        'report_title': report_title,
-        'report_scope': scope,
-        'term_param': term_param,
-        'date_range': "August 2026 – December 2026",
-        'issue_date': date.today().strftime("%B %d, %Y"),
+    return {
+        "school": school,
+        "academic_year": academic_year,
+        "term": term,
+        "enrollment": enrollment,
+        "grades": grades,
+        "attendance": attendance,
     }
 
-    template = get_template('core/report_card_pdf.html')
+
+@login_required
+def generate_student_report_card(request):
+    from core.models import AcademicYear, Term, StudentEnrollment, Grade, Attendance, ClassSubject
+    from decimal import Decimal, ROUND_HALF_UP
+    from django.http import Http404
+    from django.utils import timezone
+    from tenants.access import require_school_context, require_school_role
+
+    school_context = require_school_context(request.user)
+    require_school_role(school_context, "student")
+    school = school_context.school
+
+    student = get_object_or_404(
+        StudentProfile,
+        user=request.user,
+        school=school,
+    )
+
+    term_param = request.GET.get("term", "1")
+    scope = request.GET.get("scope", "term")
+
+    if term_param not in ("1", "2", "3"):
+        raise Http404("Invalid reporting term.")
+
+    if scope not in ("term", "annual"):
+        raise Http404("Invalid report scope.")
+
+    if scope == "annual" or term_param == "3":
+        term_numbers = (1, 2, 3)
+        report_title = "Annual Academic & Attendance Report"
+        current_term_label = "Term 1, 2 & 3 (Annual)"
+        report_scope = "annual"
+    elif term_param == "2":
+        term_numbers = (1, 2)
+        report_title = "Cumulative Term 2 Report"
+        current_term_label = "Term 1 & 2 (Cumulative)"
+        report_scope = "cumulative"
+    else:
+        term_numbers = (1,)
+        report_title = "Term 1 Academic & Attendance Report"
+        current_term_label = "Term 1"
+        report_scope = "term"
+
+    academic_year = (
+        AcademicYear.objects.filter(
+            school=school,
+            is_current=True,
+        )
+        .order_by("-pk")
+        .first()
+    )
+
+    if academic_year is None:
+        raise Http404("No current academic year configured.")
+
+    selected_terms = list(
+        Term.objects.filter(
+            school=school,
+            academic_year=academic_year,
+            name__in=[
+                f"Term {number}" for number in term_numbers
+            ],
+        ).order_by("name")
+    )
+
+    term_by_number = {
+        int(term.name[-1]): term
+        for term in selected_terms
+    }
+
+    if len(term_by_number) != len(term_numbers):
+        raise Http404("Required reporting terms are not configured.")
+
+    report_data = [
+        get_student_report_data(
+            student,
+            school,
+            academic_year.pk,
+            term_by_number[number].pk,
+        )
+        for number in term_numbers
+    ]
+
+    all_grades = []
+    attendance_querysets = []
+
+    for data in report_data:
+        all_grades.extend(list(data["grades"]))
+        attendance_querysets.append(data["attendance"])
+
+    subject_summary = {}
+
+    # Build expected subjects from the school's official curriculum.
+    # The student's enrollment determines the class for each term.
+    # Required subjects must have grades; optional subjects do not.
+    for number, data in zip(term_numbers, report_data):
+        curriculum_assignments = (
+            ClassSubject.objects.filter(
+                school=school,
+                academic_year=academic_year,
+                class_stream=data["enrollment"].class_stream,
+                subject__school=school,
+            )
+            .select_related("subject")
+        )
+
+        for assignment in curriculum_assignments:
+            subject_summary.setdefault(
+                assignment.subject_id,
+                {
+                    "subject": assignment.subject,
+                    "terms": {},
+                    "required_terms": set(),
+                    "optional_terms": set(),
+                },
+            )
+
+            if assignment.is_required:
+                subject_summary[assignment.subject_id][
+                    "required_terms"
+                ].add(number)
+            else:
+                subject_summary[assignment.subject_id][
+                    "optional_terms"
+                ].add(number)
+
+    for grade in all_grades:
+        number = int(grade.term.name[-1])
+        key = grade.subject_id
+
+        if key not in subject_summary:
+            subject_summary[key] = {
+                "subject": grade.subject,
+                "terms": {},
+                "required_terms": set(),
+                "optional_terms": set(),
+            }
+
+        subject_summary[key]["terms"][number] = {
+            "grade_obj": grade,
+            "cat_marks": grade.cat_marks,
+            "max_cat": grade.subject.max_cat_marks,
+            "exam_marks": grade.exam_marks,
+            "max_exam": grade.subject.max_exam_marks,
+            "marks_obtained": grade.marks_obtained,
+            "max_marks": grade.max_marks,
+            "percentage": grade.percentage,
+        }
+
+    def letter_for(percentage):
+        if percentage >= 80:
+            return "A", "Excellent"
+        if percentage >= 70:
+            return "B", "Very Good"
+        if percentage >= 60:
+            return "C", "Good"
+        if percentage >= 50:
+            return "D", "Satisfactory"
+        return "F", "Fail"
+
+    table_rows = []
+    completed_percentages = []
+    blocking_incomplete = False
+
+    for item in sorted(
+        subject_summary.values(),
+        key=lambda entry: entry["subject"].name.lower(),
+    ):
+        required_terms = item["required_terms"]
+        optional_terms = item["optional_terms"]
+        configured_terms = required_terms | optional_terms
+
+        percentages = [
+            item["terms"][number]["percentage"]
+            for number in term_numbers
+            if number in configured_terms
+            and number in item["terms"]
+            and item["terms"][number]["percentage"] is not None
+        ]
+
+        missing_required = any(
+            number not in item["terms"]
+            or item["terms"][number]["percentage"] is None
+            for number in required_terms
+        )
+
+        unconfigured_grade = any(
+            number not in configured_terms
+            for number in item["terms"]
+        )
+
+        if unconfigured_grade:
+            complete = False
+            blocking_incomplete = True
+            final_pct = None
+            letter = "?"
+            remarks = "Subject not configured in curriculum"
+
+        elif missing_required:
+            complete = False
+            blocking_incomplete = True
+            final_pct = None
+            letter = "?"
+            remarks = "Incomplete required results"
+
+        elif percentages:
+            complete = True
+            final_pct = (
+                sum(percentages, Decimal("0.00"))
+                / Decimal(len(percentages))
+            ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+            letter, remarks = letter_for(final_pct)
+            completed_percentages.append(final_pct)
+
+        else:
+            complete = True
+            final_pct = None
+            letter = "-"
+            remarks = "Optional - not assessed"
+
+        table_rows.append({
+            "subject_name": item["subject"].name,
+            "terms": item["terms"],
+            "final_percentage": final_pct,
+            "grade_letter": letter,
+            "remarks": remarks,
+            "is_complete": complete,
+        })
+
+    all_subjects_complete = (
+        bool(table_rows)
+        and not blocking_incomplete
+        and bool(completed_percentages)
+    )
+
+    if all_subjects_complete:
+        average_percentage = (
+            sum(completed_percentages, Decimal("0.00"))
+            / Decimal(len(completed_percentages))
+        ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+        avg_grade_letter = letter_for(average_percentage)[0]
+    else:
+        average_percentage = None
+        avg_grade_letter = "?"
+
+    attendance_records = Attendance.objects.filter(
+        school=school,
+        student=student,
+        assignment__school=school,
+        assignment__term_id__in=[
+            term_by_number[number].pk
+            for number in term_numbers
+        ],
+    )
+
+    total_records = attendance_records.count()
+    present_count = attendance_records.filter(
+        status="Present"
+    ).count()
+    late_count = attendance_records.filter(
+        status="Late"
+    ).count()
+    absent_count = attendance_records.filter(
+        status="Absent"
+    ).count()
+
+    attendance_percentage = (
+        round(
+            (present_count + late_count) * 100 / total_records,
+            1,
+        )
+        if total_records
+        else None
+    )
+
+    context = {
+        "school": school,
+        "academic_year": academic_year,
+        "student_profile": student,
+        "student_enrollment": report_data[-1]["enrollment"],
+        "attendance_records": attendance_records,
+        "grades": all_grades,
+        "table_rows": table_rows,
+        "average_percentage": average_percentage,
+        "avg_grade_letter": avg_grade_letter,
+        "attendance_percentage": attendance_percentage,
+        "present_count": present_count,
+        "late_count": late_count,
+        "absent_count": absent_count,
+        "total_records": total_records,
+        "current_term": current_term_label,
+        "report_title": report_title,
+        "report_scope": report_scope,
+        "term_param": term_param,
+        "date_range": str(academic_year.name),
+        "issue_date": timezone.localdate().strftime("%B %d, %Y"),
+        "report_complete": all_subjects_complete,
+        "attendance_unit": "class attendance records",
+    }
+
+    template = get_template("core/report_card_pdf.html")
     html = template.render(context)
-    response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="Report_Card_{student.registration_number}_Term{term_param}.pdf"'
-    
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="Report_Card_{student.pk}_'
+        f'{academic_year.name}_Term{term_param}.pdf"'
+    )
+
     pisa_status = pisa.CreatePDF(html, dest=response)
+
     if pisa_status.err:
-        return HttpResponse('Error generating PDF report', status=400)
+        return HttpResponse(
+            "Error generating PDF report",
+            status=400,
+        )
+
     return response
+
 @login_required
 def teacher_schedule_view(request):
     if not is_teacher(request.user):
@@ -1013,66 +1853,10 @@ def teacher_homework_list_view(request):
     return render(request, 'core/teacher_homework_list.html', {'assignments': assignments, 'current_term': current_term})
 @login_required
 def teacher_enter_grades_view(request, assignment_id):
-    if not is_teacher(request.user):
-        messages.error(request, "Access denied.")
-        return redirect('/login/')
+    """Compatibility wrapper for the secured grade-entry workflow."""
+    return input_grades_view(request, assignment_id)
 
-    assignment = teacher_assignment_for_user(request, assignment_id)
-    if assignment is None:
-        return deny_and_redirect(
-            request,
-            "Access denied. This assignment does not belong to you.",
-        )
 
-    class_stream = assignment.current_class
-    subject = assignment.subject
-    term = assignment.term
-
-    students = StudentProfile.objects.filter(current_class=class_stream).order_by('id')
-
-    if request.method == 'POST':
-        for student in students:
-            cat_key = f'cat_{student.id}'
-            exam_key = f'exam_{student.id}'
-
-            if cat_key in request.POST and exam_key in request.POST:
-                try:
-                    cat_val = Decimal(request.POST.get(cat_key) or '0.00')
-                    exam_val = Decimal(request.POST.get(exam_key) or '0.00')
-
-                    grade_obj, created = Grade.objects.get_or_create(
-                        student=student,
-                        subject=subject,
-                        term=term,
-                        defaults={'cat_marks': cat_val, 'exam_marks': exam_val}
-                    )
-
-                    if not created:
-                        grade_obj.cat_marks = cat_val
-                        grade_obj.exam_marks = exam_val
-                    
-                    grade_obj.save()
-
-                except (InvalidOperation, ValueError, TypeError):
-                    messages.error(
-                        request,
-                        f"Invalid marks entered for student {student.id}.",
-                    )
-                    continue
-
-        messages.success(request, f"Grades for {class_stream.name} - {subject.name} saved successfully!")
-        return redirect('teacher_dashboard')
-
-    # Map grades directly to students so the template can use student.grade cleanly
-    grades_map = {g.student_id: g for g in Grade.objects.filter(subject=subject, term=term, student__in=students)}
-    for student in students:
-        student.grade = grades_map.get(student.id)
-
-    context = {
-        'assignment': assignment,
-        'students': students,
-    }
-    return render(request, 'core/teacher_enter_grades.html', context)
 
 
 @login_required
@@ -1194,143 +1978,209 @@ from django.db.models import Sum
 from django.shortcuts import render
 from .models import StudentProfile, Term, StudentFee, FeeStructure, Payment
 
-@login_required
-@user_passes_test(
-    is_accountant_or_admin,
-    login_url="login",
-)
-def accountant_dashboard(request):
-    total_students = StudentProfile.objects.count()
 
-    current_term = (
-        Term.objects
+@login_required
+def accountant_dashboard(request):
+    """
+    Tenant-safe accountant dashboard.
+
+    Financial figures are limited to the authenticated user's
+    approved school and its current academic term.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Sum
+    from django.shortcuts import render
+    from django.utils import timezone
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    from .models import (
+        AcademicYear,
+        Term,
+        StudentProfile,
+        StudentFee,
+        Payment,
+    )
+
+    # 1. Resolve the user's approved school membership.
+    school_context = require_school_context(request.user)
+
+    # 2. Only school administrators and accountants may access
+    #    the financial dashboard.
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    school = school_context.school
+    zero = Decimal("0.00")
+
+    # 3. Scope every queryset to the authorized school.
+    students = school_queryset(
+        StudentProfile,
+        school_context,
+    )
+
+    student_fees = school_queryset(
+        StudentFee,
+        school_context,
+    )
+
+    payments = school_queryset(
+        Payment,
+        school_context,
+    )
+
+    total_students = students.count()
+
+    # 4. Resolve the current academic year and term
+    #    within this school only.
+    current_year = (
+        school_queryset(AcademicYear, school_context)
         .filter(is_current=True)
         .first()
     )
 
-    # ---------------------------------------------------------
-    # TOTAL EXPECTED FEES (Calculated dynamically per student class stream)
-    # ---------------------------------------------------------
-    total_expected_sum = None
+    current_term = None
 
-    if current_term:
-        total_expected_sum = (
-            StudentFee.objects
-            .filter(term=current_term)
-            .aggregate(total=Sum("total_expected"))
-            .get("total")
-        )
-    else:
-        total_expected_sum = (
-            StudentFee.objects
-            .aggregate(total=Sum("total_expected"))
-            .get("total")
+    if current_year is not None:
+        current_term = (
+            school_queryset(Term, school_context)
+            .filter(
+                academic_year=current_year,
+                is_current=True,
+            )
+            .first()
         )
 
-    # If no individual StudentFee records exist yet, compute dynamically by looping through students
-    if total_expected_sum is None or total_expected_sum == Decimal("0.00"):
-        computed_sum = Decimal("0.00")
-        for student in StudentProfile.objects.all():
-            if student.current_class:
-                class_fees = (
-                    FeeStructure.objects
-                    .filter(term=current_term, class_stream=student.current_class)
-                    if current_term else
-                    FeeStructure.objects.filter(class_stream=student.current_class)
-                ).aggregate(total=Sum("amount")).get("total") or Decimal("0.00")
-                
-                computed_sum += class_fees
-        
-        total_expected_sum = computed_sum
+    # 5. Initialize safe empty-state financial values.
+    total_expected = zero
+    total_collected = zero
+    outstanding_balance = zero
+    total_overpaid = zero
+    today_collections = zero
+    today_transactions = 0
 
-    # Fallback to general fee structures sum if still zero/none
-    if total_expected_sum is None or total_expected_sum == Decimal("0.00"):
-        if current_term:
-            total_expected_sum = (
-                FeeStructure.objects
-                .filter(term=current_term)
-                .aggregate(total=Sum("amount"))
-                .get("total")
-            )
-        else:
-            total_expected_sum = (
-                FeeStructure.objects
-                .aggregate(total=Sum("amount"))
-                .get("total")
-            )
+    recent_payments = payments.none()
 
-    if total_expected_sum is None:
-        total_expected_sum = Decimal("0.00")
+    finance_ready = current_term is not None
 
-    total_expected = Decimal(str(total_expected_sum))
-
-    # ---------------------------------------------------------
-    # TOTAL COLLECTED (Excluding voided payments)
-    # ---------------------------------------------------------
-    total_collected_sum = (
-        Payment.objects
-        .filter(is_voided=False)
-        .aggregate(total=Sum("amount_paid"))
-        .get("total")
+    finance_message = (
+        "Financial records are available for the current term."
+        if finance_ready
+        else (
+            "Financial setup is incomplete. "
+            "Configure a current academic year and term "
+            "before viewing current-term totals."
+        )
     )
 
-    if total_collected_sum is None:
-        total_collected = Decimal("0.00")
-    else:
-        total_collected = Decimal(str(total_collected_sum))
+    if current_term is not None:
 
-    # ---------------------------------------------------------
-    # TODAY'S COLLECTIONS & TRANSACTIONS (Excluding voided payments)
-    # ---------------------------------------------------------
-    today = timezone.now().date()
-    today_payments = Payment.objects.filter(date_paid__date=today, is_voided=False)
-    
-    today_collections_sum = today_payments.aggregate(total=Sum("amount_paid")).get("total")
-    today_collections = Decimal(str(today_collections_sum)) if today_collections_sum else Decimal("0.00")
-    today_transactions = today_payments.count()
+        # 6. Restrict financial records to the SAME school,
+        #    academic year, and term.
+        period_fees = student_fees.filter(
+            academic_year=current_year,
+            term=current_term,
+            student__school=school,
+            academic_year__school=school,
+            term__school=school,
+        )
 
-    # ---------------------------------------------------------
-    # OUTSTANDING BALANCE
-    # ---------------------------------------------------------
-    outstanding_balance = total_expected - total_collected
-    if outstanding_balance < Decimal("0.00"):
-        outstanding_balance = Decimal("0.00")
+        period_payments = payments.filter(
+            academic_year=current_year,
+            term=current_term,
+            student__school=school,
+            academic_year__school=school,
+            term__school=school,
+            is_voided=False,
+        )
 
-    # ---------------------------------------------------------
-    # TOTAL OVERPAID / ADVANCE BALANCE (Sum of excess student payments)
-    # ---------------------------------------------------------
-    total_overpaid = Decimal("0.00")
-    for student in StudentProfile.objects.all():
-        s_expected = Decimal("0.00")
-        if current_term:
-            s_fee_obj = StudentFee.objects.filter(student=student, term=current_term).first()
-            if s_fee_obj:
-                s_expected = s_fee_obj.total_expected
-            elif student.current_class:
-                s_expected = FeeStructure.objects.filter(term=current_term, class_stream=student.current_class).aggregate(total=Sum("amount")).get("total") or Decimal("0.00")
-        else:
-            s_fee_sum = StudentFee.objects.filter(student=student).aggregate(total=Sum("total_expected")).get("total")
-            s_expected = s_fee_sum if s_fee_sum else Decimal("0.00")
+        # 7. Expected fees come from student obligations.
+        #    FeeStructure templates are deliberately not
+        #    counted as actual student debt.
+        total_expected = (
+            period_fees.aggregate(
+                total=Sum("total_expected")
+            )["total"]
+            or zero
+        )
 
-        s_paid = Payment.objects.filter(student=student, is_voided=False).aggregate(total=Sum("amount_paid")).get("total") or Decimal("0.00")
+        # 8. Exclude voided payments from collected revenue.
+        total_collected = (
+            period_payments.aggregate(
+                total=Sum("amount_paid")
+            )["total"]
+            or zero
+        )
 
-        if s_paid > s_expected:
-            total_overpaid += (s_paid - s_expected)
+        # 9. Calculate outstanding and overpaid amounts
+        #    per student, avoiding cross-student offsets.
+        expected_by_student = dict(
+            period_fees.values("student_id")
+            .annotate(total=Sum("total_expected"))
+            .values_list("student_id", "total")
+        )
 
-    # ---------------------------------------------------------
-    # RECENT TRANSACTIONS FEED
-    # ---------------------------------------------------------
-    recent_payments = (
-        Payment.objects
-        .filter(is_voided=False)
-        .select_related('student', 'received_by')
-        .order_by('-date_paid', '-id')[:5]
-    )
+        paid_by_student = dict(
+            period_payments.values("student_id")
+            .annotate(total=Sum("amount_paid"))
+            .values_list("student_id", "total")
+        )
 
-    # ---------------------------------------------------------
-    # DASHBOARD CONTEXT
-    # ---------------------------------------------------------
+        student_ids = (
+            set(expected_by_student)
+            | set(paid_by_student)
+        )
+
+        for student_id in student_ids:
+            expected = expected_by_student.get(
+                student_id, zero
+            ) or zero
+
+            paid = paid_by_student.get(
+                student_id, zero
+            ) or zero
+
+            difference = expected - paid
+
+            if difference > zero:
+                outstanding_balance += difference
+            elif difference < zero:
+                total_overpaid += -difference
+
+        # 10. Today's collections for this school and term.
+        today = timezone.localdate()
+
+        today_payments = period_payments.filter(
+            date_paid__date=today
+        )
+
+        today_collections = (
+            today_payments.aggregate(
+                total=Sum("amount_paid")
+            )["total"]
+            or zero
+        )
+
+        today_transactions = today_payments.count()
+
+        # 11. Recent non-voided transactions.
+        recent_payments = (
+            period_payments
+            .select_related("student", "received_by")
+            .order_by("-date_paid", "-id")[:5]
+        )
+
+    # 12. Preserve the template's existing context keys.
     context = {
+        "school": school,
         "total_expected": total_expected,
         "total_collected": total_collected,
         "outstanding_balance": outstanding_balance,
@@ -1340,8 +2190,8 @@ def accountant_dashboard(request):
         "total_students": total_students,
         "current_term": current_term,
         "recent_payments": recent_payments,
-        "finance_ready": True,
-        "finance_message": "Payment engine and fee structures are fully active.",
+        "finance_ready": finance_ready,
+        "finance_message": finance_message,
     }
 
     return render(
@@ -1349,58 +2199,281 @@ def accountant_dashboard(request):
         "core/accountant_dashboard.html",
         context,
     )
+
 from django import forms
 from django.contrib import messages
 from django.shortcuts import redirect
+
 
 class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
         fields = [
-            'student',
-            'academic_year',
-            'term',
-            'amount_paid',
-            'payment_method',
-            'reference_number',
-            'notes',
+            "student",
+            "academic_year",
+            "term",
+            "amount_paid",
+            "payment_method",
+            "reference_number",
+            "notes",
         ]
         widgets = {
-            'student': forms.Select(attrs={'class': 'w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500'}),
-            'academic_year': forms.Select(attrs={'class': 'w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500'}),
-            'term': forms.Select(attrs={'class': 'w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500'}),
-            'amount_paid': forms.NumberInput(attrs={'class': 'w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500', 'placeholder': 'Enter amount in RWF'}),
-            'payment_method': forms.Select(attrs={'class': 'w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500'}),
-            'reference_number': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500', 'placeholder': 'Optional (e.g., Bank Slip, MoMo code)'}),
-            'notes': forms.Textarea(attrs={'class': 'w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500', 'rows': 3, 'placeholder': 'Optional remarks...'}),
+            "student": forms.Select(attrs={
+                "class": "w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            }),
+            "academic_year": forms.Select(attrs={
+                "class": "w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            }),
+            "term": forms.Select(attrs={
+                "class": "w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            }),
+            "amount_paid": forms.NumberInput(attrs={
+                "class": "w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500",
+                "placeholder": "Enter amount in RWF"
+            }),
+            "payment_method": forms.Select(attrs={
+                "class": "w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            }),
+            "reference_number": forms.TextInput(attrs={
+                "class": "w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500",
+                "placeholder": "Optional (e.g., Bank Slip, MoMo code)"
+            }),
+            "notes": forms.Textarea(attrs={
+                "class": "w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500",
+                "rows": 3,
+                "placeholder": "Optional remarks..."
+            }),
         }
+
+    def __init__(self, *args, school_context=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Assign the authorized school before validation.
+        if school_context is not None:
+            self.instance.school = school_context.school
+
+        from core.models import StudentProfile, AcademicYear, Term
+        from tenants.access import school_queryset
+
+        self.fields["student"].queryset = StudentProfile.objects.none()
+        self.fields["academic_year"].queryset = AcademicYear.objects.none()
+        self.fields["term"].queryset = Term.objects.none()
+
+        if school_context is None:
+            return
+
+        self.fields["student"].queryset = school_queryset(
+            StudentProfile,
+            school_context,
+        )
+
+        self.fields["academic_year"].queryset = school_queryset(
+            AcademicYear,
+            school_context,
+        )
+
+        self.fields["term"].queryset = school_queryset(
+            Term,
+            school_context,
+        ).filter(
+            academic_year__school=school_context.school,
+        )
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        from decimal import Decimal
+        from django.db.models import Sum
+        from core.models import StudentFee, Payment
+
+        student = cleaned_data.get("student")
+        academic_year = cleaned_data.get("academic_year")
+        term = cleaned_data.get("term")
+        amount = cleaned_data.get("amount_paid")
+        school = self.instance.school
+
+        if academic_year and term:
+            if term.academic_year_id != academic_year.pk:
+                self.add_error(
+                    "term",
+                    "The selected term does not belong to "
+                    "the selected academic year.",
+                )
+                return cleaned_data
+
+        if not all((
+            school, student, academic_year, term
+        )):
+            return cleaned_data
+
+        bill = StudentFee.objects.filter(
+            school=school,
+            student=student,
+            academic_year=academic_year,
+            term=term,
+        ).first()
+
+        if bill is None:
+            self.add_error(
+                "student",
+                "This student has no generated fee bill "
+                "for the selected term.",
+            )
+            return cleaned_data
+
+        paid = Payment.objects.filter(
+            school=school,
+            student=student,
+            academic_year=academic_year,
+            term=term,
+            is_voided=False,
+        )
+
+        if self.instance.pk:
+            paid = paid.exclude(pk=self.instance.pk)
+
+        total_paid = (
+            paid.aggregate(total=Sum("amount_paid"))["total"]
+            or Decimal("0.00")
+        )
+
+        balance = bill.total_expected - total_paid
+
+        if amount is not None and amount <= 0:
+            self.add_error(
+                "amount_paid",
+                "Payment must be greater than zero.",
+            )
+        elif amount is not None and amount > balance:
+            self.add_error(
+                "amount_paid",
+                f"Payment exceeds the outstanding balance "
+                f"of {balance} RWF.",
+            )
+
+        return cleaned_data
 
 from django.db import transaction
 
+
 @login_required
-@user_passes_test(is_accountant_or_admin, login_url="login")
 def record_payment(request):
-    if request.method == 'POST':
-        form = PaymentForm(request.POST)
+    """
+    Record a payment for the authenticated user's school only.
+    """
+    from django.contrib import messages
+    from django.db import transaction
+    from django.shortcuts import render, redirect
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+    )
+
+    # Resolve the approved school from the user's membership.
+    school_context = require_school_context(request.user)
+
+    # Only administrators and accountants can record payments.
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    if request.method == "POST":
+        form = PaymentForm(
+            request.POST,
+            school_context=school_context,
+        )
+
         if form.is_valid():
             try:
                 with transaction.atomic():
-                    payment = form.save(commit=False)
-                    payment.received_by = request.user
-                    payment.save()
-                
-                messages.success(request, f"Successfully recorded payment of {payment.amount_paid} RWF for {payment.student}.")
-                return redirect('payment_receipt', payment_id=payment.id)
-            except Exception as e:
-                messages.error(request, f"An error occurred while saving the payment: {e}")
-        else:
-            # ---> ADD THIS LINE TO DEBUG <---
-            print("FORM ERRORS:", form.errors)
-    else:
-        form = PaymentForm()
+                    from decimal import Decimal
+                    from django.db.models import Sum
+                    from django.core.exceptions import ValidationError
+                    from core.models import StudentFee, Payment
 
-    context = {'form': form}
-    return render(request, 'core/record_payment.html', context)
+                    payment = form.save(commit=False)
+
+                    # Never trust a school ID from POST data.
+                    payment.school = school_context.school
+                    payment.received_by = request.user
+
+                    # Lock the specific student's bill until commit.
+                    bill = (
+                        StudentFee.objects.select_for_update()
+                        .get(
+                            school=school_context.school,
+                            student=payment.student,
+                            academic_year=payment.academic_year,
+                            term=payment.term,
+                        )
+                    )
+
+                    # Recalculate while holding the bill lock.
+                    already_paid = (
+                        Payment.objects.filter(
+                            school=school_context.school,
+                            student=payment.student,
+                            academic_year=payment.academic_year,
+                            term=payment.term,
+                            is_voided=False,
+                        )
+                        .aggregate(total=Sum("amount_paid"))["total"]
+                        or Decimal("0.00")
+                    )
+
+                    remaining = bill.total_expected - already_paid
+
+                    if (
+                        payment.amount_paid <= 0
+                        or payment.amount_paid > remaining
+                    ):
+                        raise ValidationError(
+                            "Payment exceeds the available balance "
+                            "or has an invalid amount."
+                        )
+
+                    # Save only after the locked balance check.
+                    payment.save()
+
+                messages.success(
+                    request,
+                    (
+                        f"Successfully recorded payment of "
+                        f"{payment.amount_paid} RWF for "
+                        f"{payment.student}."
+                    ),
+                )
+
+                return redirect(
+                    "payment_receipt",
+                    payment_id=payment.pk,
+                )
+
+            except Exception:
+                # Do not expose internal database errors to users.
+                messages.error(
+                    request,
+                    "Unable to record this payment. "
+                    "Please verify the details and try again.",
+                )
+
+    else:
+        form = PaymentForm(
+            school_context=school_context,
+        )
+
+    return render(
+        request,
+        "core/record_payment.html",
+        {
+            "form": form,
+            "school": school_context.school,
+        },
+    )
+
 from decimal import Decimal
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Sum
@@ -1408,48 +2481,160 @@ from django.shortcuts import render
 from .models import StudentEnrollment, Payment, StudentFee, FeeStructure, Term
 
 @login_required
-@user_passes_test(is_accountant_or_admin, login_url="login")
 def debtors_list(request):
     """
-    Displays a list of students with outstanding financial balances for the current term.
+    Show outstanding student balances for the authorized school's
+    current academic year and term.
     """
-    current_term = Term.objects.filter(is_current=True).first()
-    
-    enrollments = StudentEnrollment.objects.select_related('student', 'class_stream', 'academic_year', 'term')
-    if current_term:
-        enrollments = enrollments.filter(term=current_term)
+    from decimal import Decimal
+
+    from django.db.models import Sum
+    from django.shortcuts import render
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    from .models import (
+        AcademicYear,
+        Term,
+        StudentEnrollment,
+        StudentFee,
+        FeeStructure,
+        Payment,
+    )
+
+    school_context = require_school_context(request.user)
+
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    school = school_context.school
+    zero = Decimal("0.00")
+
+    current_year = (
+        school_queryset(AcademicYear, school_context)
+        .filter(is_current=True)
+        .first()
+    )
+
+    current_term = None
+
+    if current_year is not None:
+        current_term = (
+            school_queryset(Term, school_context)
+            .filter(
+                academic_year=current_year,
+                is_current=True,
+            )
+            .first()
+        )
 
     debtors_data = []
-    for enrollment in enrollments:
-        student = enrollment.student
-        
-        # Calculate expected fees for this student/term
-        expected_sum = StudentFee.objects.filter(student=student, term=enrollment.term).aggregate(total=Sum('total_expected'))['total']
-        if expected_sum is None:
-            expected_sum = FeeStructure.objects.filter(class_stream=enrollment.class_stream, term=enrollment.term).aggregate(total=Sum('amount'))['total'] or Decimal("0.00")
-        expected = Decimal(str(expected_sum))
 
-        # Calculate total paid by this student for this term (excluding voided payments)
-        paid_sum = Payment.objects.filter(student=student, term=enrollment.term, is_voided=False).aggregate(total=Sum('amount_paid'))['total']
-        paid = Decimal(str(paid_sum)) if paid_sum is not None else Decimal("0.00")
+    if current_term is not None:
+        enrollments = (
+            school_queryset(StudentEnrollment, school_context)
+            .filter(
+                academic_year=current_year,
+                term=current_term,
+                student__school=school,
+                class_stream__school=school,
+                academic_year__school=school,
+                term__school=school,
+            )
+            .select_related(
+                "student",
+                "class_stream",
+                "academic_year",
+                "term",
+            )
+            .order_by("student_id", "-date_enrolled", "-pk")
+        )
 
-        balance = expected - paid
+        # Use one enrollment per student for the current term.
+        seen_students = set()
 
-        # Only include if they have an active outstanding balance
-        if balance > 0:
-            debtors_data.append({
-                'student': student,
-                'class': enrollment.class_stream,
-                'expected': expected,
-                'paid': paid,
-                'balance': balance,
-            })
+        for enrollment in enrollments:
+            student = enrollment.student
+
+            if student.pk in seen_students:
+                continue
+
+            seen_students.add(student.pk)
+
+            expected_sum = (
+                school_queryset(StudentFee, school_context)
+                .filter(
+                    student=student,
+                    academic_year=current_year,
+                    term=current_term,
+                    student__school=school,
+                    academic_year__school=school,
+                    term__school=school,
+                )
+                .aggregate(total=Sum("total_expected"))["total"]
+            )
+
+            if expected_sum is None:
+                expected_sum = (
+                    school_queryset(FeeStructure, school_context)
+                    .filter(
+                        class_stream=enrollment.class_stream,
+                        academic_year=current_year,
+                        term=current_term,
+                        class_stream__school=school,
+                        academic_year__school=school,
+                        term__school=school,
+                    )
+                    .aggregate(total=Sum("amount"))["total"]
+                )
+
+            expected = expected_sum if expected_sum is not None else zero
+
+            paid_sum = (
+                school_queryset(Payment, school_context)
+                .filter(
+                    student=student,
+                    academic_year=current_year,
+                    term=current_term,
+                    student__school=school,
+                    academic_year__school=school,
+                    term__school=school,
+                    is_voided=False,
+                )
+                .aggregate(total=Sum("amount_paid"))["total"]
+            )
+
+            paid = paid_sum if paid_sum is not None else zero
+            balance = expected - paid
+
+            if balance > zero:
+                debtors_data.append({
+                    "student": student,
+                    "class": enrollment.class_stream,
+                    "expected": expected,
+                    "paid": paid,
+                    "balance": balance,
+                })
 
     context = {
-        'debtors': debtors_data,
-        'current_term': current_term,
+        "debtors": debtors_data,
+        "current_term": current_term,
+        "school": school,
+        "finance_ready": current_term is not None,
     }
-    return render(request, 'core/debtors_list.html', context)
+
+    return render(
+        request,
+        "core/debtors_list.html",
+        context,
+    )
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test, permission_required
 from django.contrib import messages
@@ -1457,100 +2642,333 @@ from django.utils import timezone
 from .models import Payment, StudentEnrollment
 
 @login_required
-@user_passes_test(lambda u: u.is_authenticated, login_url="login") # Keep your custom accountant/admin check here
 def payment_receipt(request, payment_id):
     """
-    Displays a printable official payment receipt.
+    Display a payment receipt only to an authorized
+    administrator or accountant of the payment's school.
     """
-    payment = get_object_or_404(Payment.objects.select_related('student', 'academic_year', 'term', 'received_by'), id=payment_id)
-    
-    # Get student's class stream for the term via enrollment
-    enrollment = StudentEnrollment.objects.filter(student=payment.student, term=payment.term).select_related('class_stream').first()
-    class_name = enrollment.class_stream.name if enrollment and enrollment.class_stream else "N/A"
+    from django.shortcuts import get_object_or_404, render
+
+    from core.models import Payment, StudentEnrollment
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    # Resolve the authenticated user's approved school.
+    school_context = require_school_context(request.user)
+
+    # Students and teachers cannot access accountant receipts.
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    # Never retrieve payments across school boundaries.
+    payment = get_object_or_404(
+        school_queryset(Payment, school_context).select_related(
+            "student",
+            "academic_year",
+            "term",
+            "received_by",
+        ),
+        pk=payment_id,
+    )
+
+    # Find the student's class only within the same school,
+    # academic year and term.
+    enrollment = (
+        school_queryset(StudentEnrollment, school_context)
+        .filter(
+            student=payment.student,
+            academic_year=payment.academic_year,
+            term=payment.term,
+            class_stream__school=school_context.school,
+        )
+        .select_related("class_stream")
+        .first()
+    )
+
+    class_name = (
+        enrollment.class_stream.name
+        if enrollment and enrollment.class_stream
+        else "N/A"
+    )
 
     context = {
-        'payment': payment,
-        'class_name': class_name,
+        "payment": payment,
+        "class_name": class_name,
+        "school": school_context.school,
     }
-    return render(request, 'core/payment_receipt.html', context)
+
+    return render(
+        request,
+        "core/payment_receipt.html",
+        context,
+    )
 
 
 @login_required
-@permission_required('core.can_void_payment', raise_exception=True)
 def void_payment_view(request, payment_id):
     """
-    Handles the secure voiding/reversing of a payment with a mandatory audit trail.
+    Securely void a payment within the authenticated user's school.
+
+    Only school administrators and accountants may void payments.
+    The original payment is retained with its audit information.
     """
-    payment = get_object_or_404(Payment, id=payment_id)
-    
-    if payment.is_voided:
-        messages.error(request, "This payment has already been voided.")
-        return redirect('accountant_dashboard')
-        
-    if request.method == 'POST':
-        reason = request.POST.get('void_reason')
-        if not reason:
-            messages.error(request, "A reason is mandatory for voiding a payment.")
-            return redirect('void_payment', payment_id=payment.id)
-            
-        # Mark as voided and record audit metadata
+    from django.contrib import messages
+    from django.db import transaction
+    from django.shortcuts import get_object_or_404, redirect, render
+    from django.utils import timezone
+
+    from core.models import Payment
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    school_context = require_school_context(request.user)
+
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    payments = school_queryset(Payment, school_context)
+
+    # Reject payment IDs belonging to other schools.
+    payment = get_object_or_404(payments, pk=payment_id)
+
+    if request.method == "GET":
+        return render(
+            request,
+            "core/void_payment_confirm.html",
+            {
+                "payment": payment,
+                "school": school_context.school,
+            },
+        )
+
+    if request.method != "POST":
+        from django.http import HttpResponseNotAllowed
+        return HttpResponseNotAllowed(["GET", "POST"])
+
+    reason = request.POST.get("void_reason", "").strip()
+
+    if not reason:
+        messages.error(
+            request,
+            "A reason is required to void a payment.",
+        )
+        return redirect("school_home")
+
+    with transaction.atomic():
+        # Lock the record to prevent simultaneous void operations.
+        payment = get_object_or_404(
+            school_queryset(Payment, school_context)
+            .select_for_update(),
+            pk=payment_id,
+        )
+
+        if payment.is_voided:
+            messages.error(
+                request,
+                "This payment has already been voided.",
+            )
+            return redirect("school_home")
+
         payment.is_voided = True
         payment.void_reason = reason
         payment.voided_at = timezone.now()
         payment.voided_by = request.user
+
+        # Payment.save() performs model-level validation.
         payment.save()
-        
-        messages.success(request, f"Payment {payment.receipt_number} has been successfully voided.")
-        return redirect('accountant_dashboard')
-        
-    return render(request, 'core/void_payment_confirm.html', {'payment': payment})
+
+    messages.success(
+        request,
+        f"Payment {payment.receipt_number} was successfully voided.",
+    )
+
+    return redirect("school_home")
 from decimal import Decimal
 from django.db.models import Sum
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from .models import StudentProfile, StudentEnrollment, StudentFee, FeeStructure, Payment, Term
 
+
 @login_required
-@user_passes_test(is_accountant_or_admin, login_url="login")
 def student_financial_profile(request, student_id):
     """
-    Displays the complete financial profile, fee summary, and transaction ledger for a specific student.
+    Display a student's financial profile within the authorized school.
+
+    Only active school administrators and accountants may access it.
+    All student, enrollment, term, fee, and payment queries are
+    restricted to the authenticated user's school.
     """
-    student = get_object_or_404(StudentProfile, id=student_id)
-    current_term = Term.objects.filter(is_current=True).first()
-    
-    # Get latest enrollment to determine current class stream
-    enrollment = StudentEnrollment.objects.filter(student=student).select_related('class_stream', 'academic_year', 'term').last()
+    from decimal import Decimal
+
+    from django.db.models import Sum
+    from django.shortcuts import get_object_or_404, render
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    from .models import (
+        StudentProfile,
+        StudentEnrollment,
+        StudentFee,
+        FeeStructure,
+        Payment,
+        Term,
+    )
+
+    # 1. Identify the authorized school.
+    school_context = require_school_context(request.user)
+
+    # 2. Restrict access to financial staff and administrators.
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    # 3. Retrieve the student ONLY from this school.
+    # Another school's student ID will return HTTP 404.
+    student = get_object_or_404(
+        school_queryset(StudentProfile, school_context),
+        pk=student_id,
+    )
+
+    # 4. Retrieve the school's current term.
+    current_term = (
+        school_queryset(Term, school_context)
+        .filter(
+            is_current=True,
+            academic_year__school=school_context.school,
+        )
+        .first()
+    )
+
+    # 5. Retrieve the student's latest enrollment at this school.
+    enrollment = (
+        school_queryset(StudentEnrollment, school_context)
+        .filter(
+            student=student,
+            academic_year__school=school_context.school,
+            term__school=school_context.school,
+            class_stream__school=school_context.school,
+        )
+        .select_related(
+            "class_stream",
+            "academic_year",
+            "term",
+        )
+        .order_by("-date_enrolled", "-pk")
+        .first()
+    )
+
+    # Preserve the original behavior:
+    # Prefer the latest enrollment's term, otherwise current term.
     term_to_use = enrollment.term if enrollment else current_term
-    
-    # Calculate expected fees for the term
+
+    # 6. Calculate expected fees.
     expected_sum = None
+
     if term_to_use:
-        expected_sum = StudentFee.objects.filter(student=student, term=term_to_use).aggregate(total=Sum('total_expected'))['total']
-        if expected_sum is None and enrollment and enrollment.class_stream:
-            expected_sum = FeeStructure.objects.filter(class_stream=enrollment.class_stream, term=term_to_use).aggregate(total=Sum('amount'))['total'] or Decimal("0.00")
+        expected_sum = (
+            school_queryset(StudentFee, school_context)
+            .filter(
+                student=student,
+                term=term_to_use,
+                academic_year__school=school_context.school,
+            )
+            .aggregate(total=Sum("total_expected"))["total"]
+        )
+
+        # Preserve the original fee-structure fallback.
+        if (
+            expected_sum is None
+            and enrollment
+            and enrollment.class_stream_id
+        ):
+            expected_sum = (
+                school_queryset(FeeStructure, school_context)
+                .filter(
+                    class_stream=enrollment.class_stream,
+                    term=term_to_use,
+                    academic_year__school=school_context.school,
+                )
+                .aggregate(total=Sum("amount"))["total"]
+            )
+
     expected = Decimal(str(expected_sum or "0.00"))
 
-    # Fetch all payment transactions for this student (includes voided ones for the audit ledger display)
-    payments = Payment.objects.filter(student=student).select_related('academic_year', 'term', 'received_by', 'voided_by').order_by('-date_paid')
-    
-    # Calculate total paid EXCLUDING voided payments for the active term (or overall if no term)
-    valid_payments = payments.filter(is_voided=False)
-    paid_sum = valid_payments.filter(term=term_to_use).aggregate(total=Sum('amount_paid'))['total'] if term_to_use else valid_payments.aggregate(total=Sum('amount_paid'))['total']
-    paid = Decimal(str(paid_sum)) if paid_sum is not None else Decimal("0.00")
+    # 7. Retrieve ONLY this school's payment records.
+    # Include voided payments in the audit ledger.
+    payments = (
+        school_queryset(Payment, school_context)
+        .filter(
+            student=student,
+            academic_year__school=school_context.school,
+            term__school=school_context.school,
+        )
+        .select_related(
+            "academic_year",
+            "term",
+            "received_by",
+            "voided_by",
+        )
+        .order_by("-date_paid")
+    )
 
+    # 8. Exclude voided payments from the paid amount.
+    valid_payments = payments.filter(is_voided=False)
+
+    if term_to_use:
+        paid_sum = (
+            valid_payments
+            .filter(term=term_to_use)
+            .aggregate(total=Sum("amount_paid"))["total"]
+        )
+    else:
+        paid_sum = (
+            valid_payments
+            .aggregate(total=Sum("amount_paid"))["total"]
+        )
+
+    paid = Decimal(str(paid_sum or "0.00"))
+
+    # 9. Calculate outstanding balance.
     balance = expected - paid
 
+    # 10. Render the financial profile.
     context = {
-        'student': student,
-        'enrollment': enrollment,
-        'term': term_to_use,
-        'expected': expected,
-        'paid': paid,
-        'balance': balance,
-        'payments': payments,
+        "student": student,
+        "enrollment": enrollment,
+        "term": term_to_use,
+        "expected": expected,
+        "paid": paid,
+        "balance": balance,
+        "payments": payments,
+        "school": school_context.school,
     }
-    return render(request, 'core/student_financial_profile.html', context)
+
+    return render(
+        request,
+        "core/student_financial_profile.html",
+        context,
+    )
+
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
@@ -1592,38 +3010,95 @@ from decimal import Decimal
 from django.db.models import Sum
 from core.models import StudentFee, FeeStructure, Term
 
-def generate_student_fees_for_term(term=None):
+def generate_student_fees_for_term(*, school, term):
     """
-    Automatically calculates and creates StudentFee records for all 
-    enrolled students for a given term based on their current_class's FeeStructure.
+    Generate student fee obligations for one school and term.
+
+    Existing obligations are preserved. The caller must
+    separately authorize the school before invoking this
+    service.
     """
-    if not term:
-        term = Term.objects.filter(is_current=True).first()
-    
-    if not term:
-        return 0
+    from decimal import Decimal
 
-    count = 0
-    for student in StudentProfile.objects.all():
-        # Use student.current_class as defined in your StudentProfile model
-        class_stream = student.current_class
-        
-        if class_stream:
-            # Sum up all fee categories configured for this class stream and term
-            total_fee_sum = FeeStructure.objects.filter(
-                term=term, 
-                class_stream=class_stream
-            ).aggregate(total=Sum('amount')).get('total') or Decimal('0.00')
+    from django.core.exceptions import ValidationError
+    from django.db import transaction
+    from django.db.models import Sum
 
-            # Create or update the StudentFee record for this student
-            StudentFee.objects.update_or_create(
-                student=student,
-                term=term,
-                defaults={'total_expected': total_fee_sum}
+    from .models import (
+        StudentProfile,
+        StudentFee,
+        FeeStructure,
+    )
+
+    if school is None or term is None:
+        raise ValidationError(
+            "School and term are required."
+        )
+
+    if term.school_id != school.pk:
+        raise ValidationError(
+            "The selected term does not belong to this school."
+        )
+
+    if term.academic_year.school_id != school.pk:
+        raise ValidationError(
+            "The academic year does not belong to this school."
+        )
+
+    structures = FeeStructure.objects.filter(
+        school=school,
+        term=term,
+        academic_year=term.academic_year,
+        class_stream__school=school,
+        category__school=school,
+    )
+
+    totals = dict(
+        structures.values("class_stream_id")
+        .annotate(total=Sum("amount"))
+        .values_list("class_stream_id", "total")
+    )
+
+    students = StudentProfile.objects.filter(
+        school=school,
+        current_class__school=school,
+        current_class_id__in=totals.keys(),
+    )
+
+    created_count = 0
+
+    with transaction.atomic():
+        for student in students:
+            total = totals.get(
+                student.current_class_id,
+                Decimal("0.00"),
             )
-            count += 1
 
-    return count
+            if total is None:
+                continue
+
+            existing = StudentFee.objects.filter(
+                school=school,
+                student=student,
+                academic_year=term.academic_year,
+                term=term,
+            ).exists()
+
+            if existing:
+                continue
+
+            StudentFee.objects.create(
+                school=school,
+                student=student,
+                academic_year=term.academic_year,
+                term=term,
+                total_expected=total,
+            )
+
+            created_count += 1
+
+    return created_count
+
 # views.py (Finance)
 from django.shortcuts import get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, permission_required
@@ -1631,35 +3106,6 @@ from django.utils import timezone
 from django.contrib import messages
 from .models import Payment
 
-@login_required
-@permission_required('core.can_void_payment', raise_exception=True)
-def void_payment_view(request, payment_id):
-    """
-    Handles the secure voiding/reversing of a payment with a mandatory audit trail.
-    """
-    payment = get_object_or_404(Payment, id=payment_id)
-    
-    if payment.is_voided:
-        messages.error(request, "This payment has already been voided.")
-        return redirect('accountant_dashboard')
-        
-    if request.method == 'POST':
-        reason = request.POST.get('void_reason')
-        if not reason:
-            messages.error(request, "A reason is mandatory for voiding a payment.")
-            return redirect('void_payment', payment_id=payment.id)
-            
-        # Mark as voided and record audit metadata
-        payment.is_voided = True
-        payment.void_reason = reason
-        payment.voided_at = timezone.now()
-        payment.voided_by = request.user
-        payment.save()
-        
-        messages.success(request, f"Payment {payment.receipt_number} has been successfully voided.")
-        return redirect('accountant_dashboard')
-        
-    return render(request, 'core/void_payment_confirm.html', {'payment': payment})
 from decimal import Decimal
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
@@ -1670,49 +3116,108 @@ from .models import StudentProfile, StudentEnrollment, Payment, StudentFee, FeeS
 
 @login_required
 def student_financial_statement(request, student_id):
-    """
-    Generates a complete, printable financial statement and ledger history for a single student.
-    Accessible by accountants/admins for any student, and by a student for their own record only.
-    """
-    student = get_object_or_404(StudentProfile, id=student_id)
+    """School-scoped financial statement with student self-access."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from django.core.exceptions import PermissionDenied
+    from django.shortcuts import get_object_or_404, render
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
 
-    is_owner = student.user_id == request.user.id
-    if not (is_accountant_or_admin(request.user) or is_owner):
-        raise PermissionDenied("You do not have permission to view this statement.")
+    context = require_school_context(request.user)
 
-    # Fetch all enrollments for this student
-    enrollments = StudentEnrollment.objects.filter(student=student).select_related('class_stream', 'term', 'academic_year')
+    student = get_object_or_404(
+        school_queryset(StudentProfile, context).filter(
+            user__school_memberships__school=context.school,
+            user__school_memberships__is_active=True,
+        ).distinct(),
+        pk=student_id,
+    )
 
-    # Fetch all payments (including voided ones, so the history is fully accountable)
-    payments = Payment.objects.filter(student=student).order_by('-date_paid')
+    is_owner = student.user_id == request.user.pk
 
-    # Calculate overall financial totals
+    if is_owner:
+        require_school_role(
+            context, "student", "administrator", "accountant"
+        )
+    else:
+        require_school_role(
+            context, "administrator", "accountant"
+        )
+
+    enrollments = school_queryset(
+        StudentEnrollment, context
+    ).filter(
+        student=student,
+        academic_year__school=context.school,
+        term__school=context.school,
+        class_stream__school=context.school,
+    ).select_related(
+        "class_stream", "term", "academic_year"
+    )
+
+    payments = school_queryset(
+        Payment, context
+    ).filter(
+        student=student,
+        academic_year__school=context.school,
+        term__school=context.school,
+    ).order_by("-date_paid")
+
     total_expected = Decimal("0.00")
+
     for enrollment in enrollments:
-        expected_sum = StudentFee.objects.filter(student=student, term=enrollment.term).aggregate(total=Sum('total_expected'))['total']
+        expected_sum = school_queryset(
+            StudentFee, context
+        ).filter(
+            student=student,
+            academic_year=enrollment.academic_year,
+            term=enrollment.term,
+        ).aggregate(
+            total=Sum("total_expected")
+        )["total"]
+
         if expected_sum is None:
-            expected_sum = FeeStructure.objects.filter(class_stream=enrollment.class_stream, term=enrollment.term).aggregate(total=Sum('amount'))['total'] or Decimal("0.00")
+            expected_sum = school_queryset(
+                FeeStructure, context
+            ).filter(
+                academic_year=enrollment.academic_year,
+                term=enrollment.term,
+                class_stream=enrollment.class_stream,
+                category__school=context.school,
+            ).aggregate(
+                total=Sum("amount")
+            )["total"] or Decimal("0.00")
+
         total_expected += Decimal(str(expected_sum))
 
-    # Only sum non-voided payments for the paid total
-    valid_payments = payments.filter(is_voided=False)
-    total_paid_sum = valid_payments.aggregate(total=Sum('amount_paid'))['total']
-    total_paid = Decimal(str(total_paid_sum)) if total_paid_sum is not None else Decimal("0.00")
+    total_paid = payments.filter(
+        is_voided=False
+    ).aggregate(
+        total=Sum("amount_paid")
+    )["total"] or Decimal("0.00")
 
-    outstanding_balance = total_expected - total_paid
-    if outstanding_balance < Decimal("0.00"):
-        outstanding_balance = Decimal("0.00")
+    outstanding_balance = max(
+        total_expected - total_paid,
+        Decimal("0.00"),
+    )
 
-    context = {
-        'student': student,
-        'enrollments': enrollments,
-        'payments': payments,
-        'total_expected': total_expected,
-        'total_paid': total_paid,
-        'outstanding_balance': outstanding_balance,
-    }
+    return render(
+        request,
+        "core/student_statement.html",
+        {
+            "student": student,
+            "enrollments": enrollments,
+            "payments": payments,
+            "total_expected": total_expected,
+            "total_paid": total_paid,
+            "outstanding_balance": outstanding_balance,
+        },
+    )
 
-    return render(request, 'core/student_statement.html', context)
 from decimal import Decimal
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -1721,65 +3226,140 @@ from django.shortcuts import render
 from .models import Payment
 
 @login_required
-@user_passes_test(is_accountant_or_admin, login_url="login")
 def daily_collection_report(request):
     """
-    Generates a daily collection summary report broken down by payment methods.
+    School-scoped daily collection report.
+    Excludes voided payments from all financial totals.
     """
-    # Allow picking a date via GET parameters, default to today
-    date_str = request.GET.get('date')
-    if date_str:
-        try:
-            report_date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            report_date = timezone.now().date()
-    else:
-        report_date = timezone.now().date()
+    from datetime import datetime
+    from decimal import Decimal
 
-    # Fetch active (non-voided) payments for this specific date
-    payments = Payment.objects.filter(date_paid__date=report_date, is_voided=False).select_related('student', 'term')
+    from django.db.models import Sum
+    from django.shortcuts import render
+    from django.utils import timezone
 
-    # Aggregate by payment method
-    method_summaries = payments.values('payment_method').annotate(total=Sum('amount_paid'))
-    
-    # Calculate overall daily total and transaction count
-    total_collection_sum = payments.aggregate(total=Sum('amount_paid'))['total']
-    total_collection = Decimal(str(total_collection_sum)) if total_collection_sum is not None else Decimal("0.00")
-    total_transactions = payments.count()
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+    from .models import Payment
 
-    context = {
-        'report_date': report_date,
-        'payments': payments,
-        'method_summaries': method_summaries,
-        'total_collection': total_collection,
-        'total_transactions': total_transactions,
-    }
-    
-    return render(request, 'core/daily_collection_report.html', context)
+    school_context = require_school_context(request.user)
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    date_str = request.GET.get("date", "").strip()
+
+    try:
+        report_date = (
+            datetime.strptime(date_str, "%Y-%m-%d").date()
+            if date_str
+            else timezone.localdate()
+        )
+    except ValueError:
+        report_date = timezone.localdate()
+
+    payments = (
+        school_queryset(Payment, school_context)
+        .filter(
+            date_paid__date=report_date,
+            is_voided=False,
+            student__school=school_context.school,
+            academic_year__school=school_context.school,
+            term__school=school_context.school,
+        )
+        .select_related("student", "term", "academic_year")
+        .order_by("-date_paid", "-pk")
+    )
+
+    method_summaries = (
+        payments.values("payment_method")
+        .annotate(total=Sum("amount_paid"))
+        .order_by("payment_method")
+    )
+
+    total_sum = payments.aggregate(
+        total=Sum("amount_paid")
+    )["total"]
+
+    total_collection = (
+        total_sum if total_sum is not None
+        else Decimal("0.00")
+    )
+
+    return render(
+        request,
+        "core/daily_collection_report.html",
+        {
+            "report_date": report_date,
+            "payments": payments,
+            "method_summaries": method_summaries,
+            "total_collection": total_collection,
+            "total_transactions": payments.count(),
+            "school": school_context.school,
+        },
+    )
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 # Make sure to import your Student model (adjust app name as needed)
 from .models import StudentProfile as Student
 
+
 @login_required
 def student_search(request):
-    query = request.GET.get('q', '').strip()
-    students = []
-    
+    """
+    Search students belonging only to the authenticated user's school.
+
+    Accessible to school administrators and accountants.
+    """
+    from django.db.models import Q
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+    from .models import StudentProfile
+
+    school_context = require_school_context(request.user)
+
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    query = request.GET.get("q", "").strip()
+
+    students = StudentProfile.objects.none()
+
     if query:
-        # Search by name, registration number, or parent/guardian contact info
-        students = Student.objects.filter(
-            Q(first_name__icontains=query) |
-            Q(last_name__icontains=query) |
-            Q(registration_number__icontains=query)
-        ).distinct()[:50]  # Limit results for performance
-        
+        students = (
+            school_queryset(StudentProfile, school_context)
+            .filter(
+                Q(first_name__icontains=query)
+                | Q(last_name__icontains=query)
+                | Q(registration_number__icontains=query)
+            )
+            .order_by("id")[:50]
+        )
+
     context = {
-        'query': query,
-        'students': students,
+        "query": query,
+        "students": students,
+        "school": school_context.school,
     }
-    return render(request, 'accountant/student_search.html', context)
+
+    return render(
+        request,
+        "accountant/student_search.html",
+        context,
+    )
+
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
 from django.shortcuts import render
@@ -1787,170 +3367,418 @@ from .models import Payment, ClassStream, StudentFee, FeeStructure, Term
 
 @login_required
 def class_collections_report(request):
-    classes = ClassStream.objects.all()
+    """
+    School-scoped class collections for the current academic term.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Sum
+    from django.shortcuts import render
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    from .models import (
+        AcademicYear,
+        Term,
+        ClassStream,
+        StudentEnrollment,
+        StudentFee,
+        FeeStructure,
+        Payment,
+    )
+
+    school_context = require_school_context(request.user)
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    school = school_context.school
+    zero = Decimal("0.00")
+
+    current_year = (
+        school_queryset(AcademicYear, school_context)
+        .filter(is_current=True)
+        .first()
+    )
+
+    current_term = None
+
+    if current_year is not None:
+        current_term = (
+            school_queryset(Term, school_context)
+            .filter(
+                academic_year=current_year,
+                is_current=True,
+            )
+            .first()
+        )
+
     class_data = []
-    
-    current_term = Term.objects.filter(is_current=True).first()
-    
-    for c in classes:
-        students = c.studentprofile_set.all()
-        student_count = students.count()
-        
-        total_expected = StudentFee.objects.filter(student__current_class=c).aggregate(
-            sum_expected=Sum('total_expected')
-        )['sum_expected'] or 0
-        
-        if total_expected == 0 and current_term:
-            class_fee_total = FeeStructure.objects.filter(
-                class_stream=c, 
-                term=current_term, 
-                academic_year=current_term.academic_year
-            ).aggregate(sum_amount=Sum('amount'))['sum_amount'] or 0
-            
-            total_expected = class_fee_total * student_count
 
-        payments = Payment.objects.filter(student__current_class=c)
-        total_collected = sum(p.amount_paid for p in payments)
-        
-        balance = total_expected - total_collected
-        
-        # Calculate collection rate percentage safely
-        if total_expected > 0:
-            collection_rate = (total_collected / total_expected) * 100
-        else:
-            collection_rate = 0.0
+    if current_term is not None:
+        classes = (
+            school_queryset(ClassStream, school_context)
+            .order_by("name", "pk")
+        )
 
-        class_data.append({
-            'class_name': c.name,
-            'total_students': student_count,
-            'total_expected': total_expected,
-            'total_collected': total_collected,
-            'balance': balance,
-            'collection_rate': round(collection_rate, 1),
-            'transaction_count': payments.count()
-        })
+        enrollments = (
+            school_queryset(StudentEnrollment, school_context)
+            .filter(
+                academic_year=current_year,
+                term=current_term,
+                student__school=school,
+                class_stream__school=school,
+                academic_year__school=school,
+                term__school=school,
+            )
+            .select_related("student", "class_stream")
+            .order_by("student_id", "-date_enrolled", "-pk")
+        )
 
-    context = {
-        'class_data': class_data,
-    }
-    return render(request, 'accountant/class_collections_report.html', context)
+        # Keep the latest enrollment per student for this term.
+        students_by_class = {}
+        seen_students = set()
+
+        for enrollment in enrollments:
+            if enrollment.student_id in seen_students:
+                continue
+
+            seen_students.add(enrollment.student_id)
+
+            students_by_class.setdefault(
+                enrollment.class_stream_id, []
+            ).append(enrollment.student)
+
+        for class_stream in classes:
+            students = students_by_class.get(class_stream.pk, [])
+
+            total_expected = zero
+            total_collected = zero
+            transaction_count = 0
+
+            structure_sum = (
+                school_queryset(FeeStructure, school_context)
+                .filter(
+                    class_stream=class_stream,
+                    academic_year=current_year,
+                    term=current_term,
+                    class_stream__school=school,
+                    academic_year__school=school,
+                    term__school=school,
+                )
+                .aggregate(total=Sum("amount"))["total"]
+            )
+
+            structure_expected = (
+                structure_sum
+                if structure_sum is not None
+                else zero
+            )
+
+            for student in students:
+                expected_sum = (
+                    school_queryset(StudentFee, school_context)
+                    .filter(
+                        student=student,
+                        academic_year=current_year,
+                        term=current_term,
+                        student__school=school,
+                        academic_year__school=school,
+                        term__school=school,
+                    )
+                    .aggregate(total=Sum("total_expected"))["total"]
+                )
+
+                expected = (
+                    expected_sum
+                    if expected_sum is not None
+                    else structure_expected
+                )
+
+                payments = (
+                    school_queryset(Payment, school_context)
+                    .filter(
+                        student=student,
+                        academic_year=current_year,
+                        term=current_term,
+                        student__school=school,
+                        academic_year__school=school,
+                        term__school=school,
+                        is_voided=False,
+                    )
+                )
+
+                paid_sum = payments.aggregate(
+                    total=Sum("amount_paid")
+                )["total"]
+
+                total_expected += expected
+                total_collected += (
+                    paid_sum if paid_sum is not None else zero
+                )
+                transaction_count += payments.count()
+
+            balance = total_expected - total_collected
+
+            collection_rate = (
+                round(
+                    float(
+                        total_collected / total_expected * 100
+                    ),
+                    1,
+                )
+                if total_expected > zero
+                else 0.0
+            )
+
+            class_data.append({
+                "class_id": class_stream.pk,
+                "class_name": class_stream.name,
+                "total_students": len(students),
+                "total_expected": total_expected,
+                "total_collected": total_collected,
+                "balance": balance,
+                "collection_rate": collection_rate,
+                "transaction_count": transaction_count,
+            })
+
+    return render(
+        request,
+        "accountant/class_collections_report.html",
+        {
+            "class_data": class_data,
+            "school": school,
+            "current_year": current_year,
+            "current_term": current_term,
+            "finance_ready": current_term is not None,
+        },
+    )
+
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
 from django.shortcuts import render
 from .models import Payment, ClassStream, StudentFee, FeeStructure, Term
 
-@login_required
-def class_collections_report(request):
-    classes = ClassStream.objects.all()
-    class_data = []
-    
-    current_term = Term.objects.filter(is_current=True).first()
-    
-    for c in classes:
-        students = c.studentprofile_set.all()
-        student_count = students.count()
-        
-        # Try fetching from StudentFee model first
-        total_expected = StudentFee.objects.filter(student__current_class=c).aggregate(
-            sum_expected=Sum('total_expected')
-        )['sum_expected'] or 0
-        
-        # Fallback to FeeStructure if no individual student fee records exist
-        if total_expected == 0 and current_term:
-            class_fee_total = FeeStructure.objects.filter(
-                class_stream=c, 
-                term=current_term, 
-                academic_year=current_term.academic_year
-            ).aggregate(sum_amount=Sum('amount'))['sum_amount'] or 0
-            
-            total_expected = class_fee_total * student_count
-
-        # Sum collected payments for students in this class
-        payments = Payment.objects.filter(student__current_class=c)
-        total_collected = sum(p.amount_paid for p in payments)
-        
-        balance = total_expected - total_collected
-        
-        # Calculate collection rate percentage safely
-        if total_expected > 0:
-            collection_rate = (total_collected / total_expected) * 100
-        else:
-            collection_rate = 0.0
-
-        class_data.append({
-            'class_id': c.id,  # Essential for the detail page link
-            'class_name': c.name,
-            'total_students': student_count,
-            'total_expected': total_expected,
-            'total_collected': total_collected,
-            'balance': balance,
-            'collection_rate': round(collection_rate, 1),
-            'transaction_count': payments.count()
-        })
-
-    context = {
-        'class_data': class_data,
-    }
-    return render(request, 'accountant/class_collections_report.html', context)
 @login_required
 def class_collection_detail(request, class_id):
-    class_stream = get_object_or_404(ClassStream, id=class_id)
-    students = class_stream.studentprofile_set.all()
-    current_term = Term.objects.filter(is_current=True).first()
-    
+    """
+    School-scoped class financial details for the current term.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Sum
+    from django.shortcuts import get_object_or_404, render
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    from .models import (
+        AcademicYear,
+        Term,
+        ClassStream,
+        StudentEnrollment,
+        StudentFee,
+        FeeStructure,
+        Payment,
+    )
+
+    school_context = require_school_context(request.user)
+
+    require_school_role(
+        school_context,
+        "administrator",
+        "accountant",
+    )
+
+    school = school_context.school
+    zero = Decimal("0.00")
+
+    # A foreign school's class ID must return HTTP 404.
+    class_stream = get_object_or_404(
+        school_queryset(ClassStream, school_context),
+        pk=class_id,
+    )
+
+    current_year = (
+        school_queryset(AcademicYear, school_context)
+        .filter(is_current=True)
+        .first()
+    )
+
+    current_term = None
+
+    if current_year is not None:
+        current_term = (
+            school_queryset(Term, school_context)
+            .filter(
+                academic_year=current_year,
+                is_current=True,
+            )
+            .first()
+        )
+
     student_details = []
-    class_total_expected = 0
-    class_total_collected = 0
-    
-    for student in students:
-        student_expected = StudentFee.objects.filter(student=student).aggregate(
-            sum_expected=Sum('total_expected')
-        )['sum_expected'] or 0
-        
-        if student_expected == 0 and current_term:
-            student_expected = FeeStructure.objects.filter(
+    class_total_expected = zero
+    class_total_collected = zero
+
+    if current_term is not None:
+        enrollments = (
+            school_queryset(StudentEnrollment, school_context)
+            .filter(
                 class_stream=class_stream,
+                academic_year=current_year,
                 term=current_term,
-                academic_year=current_term.academic_year
-            ).aggregate(sum_amount=Sum('amount'))['sum_amount'] or 0
-            
-        # FIX: Exclude voided payments from calculations and counts
-        student_payments = Payment.objects.filter(student=student, is_voided=False)
-        student_collected = sum(p.amount_paid for p in student_payments)
-        student_balance = student_expected - student_collected
-        
-        class_total_expected += student_expected
-        class_total_collected += student_collected
-        
-        student_details.append({
-            'student': student,
-            'expected': student_expected,
-            'collected': student_collected,
-            'balance': student_balance,
-            'payments_count': student_payments.count()
-        })
-        
-    class_balance = class_total_expected - class_total_collected
-    
-    context = {
-        'class_stream': class_stream,
-        'student_details': student_details,
-        'class_total_expected': class_total_expected,
-        'class_total_collected': class_total_collected,
-        'class_balance': class_balance,
-    }
-    return render(request, 'accountant/class_collection_detail.html', context)
+                student__school=school,
+                class_stream__school=school,
+                academic_year__school=school,
+                term__school=school,
+            )
+            .select_related("student")
+            .order_by("student_id", "-date_enrolled", "-pk")
+        )
+
+        # Match the summary report's deduplication rule.
+        seen_students = set()
+
+        structure_sum = (
+            school_queryset(FeeStructure, school_context)
+            .filter(
+                class_stream=class_stream,
+                academic_year=current_year,
+                term=current_term,
+                class_stream__school=school,
+                academic_year__school=school,
+                term__school=school,
+            )
+            .aggregate(total=Sum("amount"))["total"]
+        )
+
+        structure_expected = (
+            structure_sum
+            if structure_sum is not None
+            else zero
+        )
+
+        for enrollment in enrollments:
+            student = enrollment.student
+
+            if student.pk in seen_students:
+                continue
+
+            seen_students.add(student.pk)
+
+            expected_sum = (
+                school_queryset(StudentFee, school_context)
+                .filter(
+                    student=student,
+                    academic_year=current_year,
+                    term=current_term,
+                    student__school=school,
+                    academic_year__school=school,
+                    term__school=school,
+                )
+                .aggregate(total=Sum("total_expected"))["total"]
+            )
+
+            expected = (
+                expected_sum
+                if expected_sum is not None
+                else structure_expected
+            )
+
+            payments = (
+                school_queryset(Payment, school_context)
+                .filter(
+                    student=student,
+                    academic_year=current_year,
+                    term=current_term,
+                    student__school=school,
+                    academic_year__school=school,
+                    term__school=school,
+                    is_voided=False,
+                )
+            )
+
+            paid_sum = payments.aggregate(
+                total=Sum("amount_paid")
+            )["total"]
+
+            collected = (
+                paid_sum if paid_sum is not None else zero
+            )
+
+            balance = expected - collected
+
+            class_total_expected += expected
+            class_total_collected += collected
+
+            student_details.append({
+                "student": student,
+                "expected": expected,
+                "collected": collected,
+                "balance": balance,
+                "payments_count": payments.count(),
+            })
+
+    class_balance = (
+        class_total_expected - class_total_collected
+    )
+
+    return render(
+        request,
+        "accountant/class_collection_detail.html",
+        {
+            "class_stream": class_stream,
+            "student_details": student_details,
+            "class_total_expected": class_total_expected,
+            "class_total_collected": class_total_collected,
+            "class_balance": class_balance,
+            "school": school,
+            "current_year": current_year,
+            "current_term": current_term,
+            "finance_ready": current_term is not None,
+        },
+    )
+
 from django.shortcuts import get_object_or_404, render
 from django.contrib.auth.decorators import login_required
 from .models import StudentProfile
 
 @login_required
 def accountant_student_profile(request, student_id):
-    student = get_object_or_404(StudentProfile, id=student_id)
-    context = {
-        'student': student,
-    }
-    return render(request, 'accountant/student_profile.html', context)
+    """Only school accountants/admins may view school student profiles."""
+    from django.shortcuts import get_object_or_404, render
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+
+    context = require_school_context(request.user)
+    require_school_role(
+        context, "administrator", "accountant"
+    )
+
+    student = get_object_or_404(
+        school_queryset(StudentProfile, context),
+        pk=student_id,
+    )
+
+    return render(
+        request,
+        "accountant/student_profile.html",
+        {"student": student},
+    )
+
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
@@ -2024,3 +3852,199 @@ def student_finances_view(request):
         'payments': payments,
     }
     return render(request, 'student/finances.html', context)
+
+
+@login_required
+def fee_configuration(request):
+    """School-specific fee category and structure management."""
+    from decimal import Decimal, InvalidOperation
+    from django.contrib import messages
+    from django.core.exceptions import ValidationError
+    from django.db import IntegrityError, transaction
+    from django.shortcuts import redirect, render
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+        school_queryset,
+    )
+    from .models import (
+        AcademicYear, Term, ClassStream,
+        FeeCategory, FeeStructure,
+    )
+
+    school_context = require_school_context(request.user)
+    require_school_role(school_context, "administrator")
+    school = school_context.school
+
+    years = school_queryset(
+        AcademicYear, school_context
+    ).order_by("-id")
+
+    terms = school_queryset(
+        Term, school_context
+    ).select_related("academic_year").order_by("-id")
+
+    classes = school_queryset(
+        ClassStream, school_context
+    ).order_by("name")
+
+    categories = school_queryset(
+        FeeCategory, school_context
+    ).order_by("name")
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        if action == "generate_fees":
+            raw_term_id = request.POST.get("term", "").strip()
+
+            if not raw_term_id.isdecimal():
+                messages.error(request, "Select a valid term.")
+            else:
+                selected_term = terms.filter(
+                    pk=int(raw_term_id)
+                ).first()
+
+                if selected_term is None:
+                    messages.error(
+                        request,
+                        "The selected term does not belong to your school.",
+                    )
+                else:
+                    try:
+                        created_count = generate_student_fees_for_term(
+                            school=school,
+                            term=selected_term,
+                        )
+                    except ValidationError:
+                        messages.error(
+                            request,
+                            "Student fees could not be generated.",
+                        )
+                    else:
+                        messages.success(
+                            request,
+                            f"{created_count} student fee "
+                            "obligation(s) created. "
+                            "Existing obligations were preserved.",
+                        )
+                        return redirect("fee_configuration")
+
+        elif action == "create_category":
+            name = request.POST.get("name", "").strip()
+            description = request.POST.get(
+                "description", ""
+            ).strip()
+
+            if not name:
+                messages.error(
+                    request, "Category name is required."
+                )
+            else:
+                try:
+                    with transaction.atomic():
+                        FeeCategory.objects.create(
+                            school=school,
+                            name=name,
+                            description=description,
+                        )
+                except (ValidationError, IntegrityError):
+                    messages.error(
+                        request,
+                        "Category could not be created. "
+                        "The name may already exist.",
+                    )
+                else:
+                    messages.success(
+                        request, "Fee category created."
+                    )
+                    return redirect("fee_configuration")
+
+        elif action == "create_structure":
+            def selected_record(queryset, field_name):
+                raw_id = request.POST.get(field_name, "").strip()
+
+                if not raw_id.isdecimal():
+                    return None
+
+                return queryset.filter(pk=int(raw_id)).first()
+
+            year = selected_record(years, "academic_year")
+            term = selected_record(terms, "term")
+            class_stream = selected_record(classes, "class_stream")
+            category = selected_record(categories, "category")
+
+            try:
+                amount = Decimal(
+                    request.POST.get("amount", "").strip()
+                )
+            except (InvalidOperation, ValueError):
+                amount = None
+
+            if (
+                not all((year, term, class_stream, category))
+                or amount is None
+                or not amount.is_finite()
+                or amount <= 0
+                or term.academic_year_id != year.pk
+            ):
+                messages.error(
+                    request,
+                    "Select valid school records and "
+                    "enter a positive amount.",
+                )
+            elif FeeStructure.objects.filter(
+                school=school,
+                academic_year=year,
+                term=term,
+                class_stream=class_stream,
+                category=category,
+            ).exists():
+                messages.error(
+                    request,
+                    "This fee structure already exists.",
+                )
+            else:
+                try:
+                    with transaction.atomic():
+                        FeeStructure.objects.create(
+                            school=school,
+                            academic_year=year,
+                            term=term,
+                            class_stream=class_stream,
+                            category=category,
+                            amount=amount,
+                        )
+                except (ValidationError, IntegrityError):
+                    messages.error(
+                        request,
+                        "Fee structure could not be saved.",
+                    )
+                else:
+                    messages.success(
+                        request, "Fee structure created."
+                    )
+                    return redirect("fee_configuration")
+        else:
+            messages.error(request, "Invalid action.")
+
+    structures = school_queryset(
+        FeeStructure, school_context
+    ).select_related(
+        "academic_year", "term",
+        "class_stream", "category"
+    ).order_by("-id")
+
+    return render(
+        request,
+        "core/fee_configuration.html",
+        {
+            "school": school,
+            "years": years,
+            "terms": terms,
+            "classes": classes,
+            "categories": categories,
+            "structures": structures,
+        },
+    )

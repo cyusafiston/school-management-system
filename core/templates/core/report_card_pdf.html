@@ -1,169 +1,383 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Official Report Card</title>
-    <style>
-        body { font-family: Helvetica, Arial, sans-serif; color: #1e293b; margin: 0; padding: 20px; font-size: 13px; }
-        .header { text-align: center; border-bottom: 2px solid #38bdf8; padding-bottom: 10px; margin-bottom: 20px; }
-        .school-name { font-size: 20px; font-weight: bold; color: #0f172a; margin: 0; }
-        .report-title { font-size: 13px; text-transform: uppercase; color: #64748b; margin-top: 5px; }
-        
-        .student-info { width: 100%; margin-bottom: 20px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
-        .student-info td { padding: 5px 8px; font-size: 12px; }
-        
-        h3 { font-size: 14px; color: #0f172a; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-top: 20px; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 15px; }
-        th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; font-size: 11px; }
-        th { background: #f1f5f9; color: #0f172a; font-weight: bold; text-transform: uppercase; }
-        
-        .footer { margin-top: 30px; width: 100%; display: table; }
-        .footer-left { display: table-cell; width: 50%; font-size: 11px; vertical-align: bottom; }
-        .footer-right { display: table-cell; width: 50%; text-align: right; }
-        .signature-box { border-top: 1px solid #94a3b8; width: 180px; text-align: center; padding-top: 5px; margin-left: auto; font-size: 11px; }
-    </style>
+<meta charset="UTF-8">
+<title>Academic Report Card</title>
+<style>
+@page {
+    size: A4 portrait;
+    margin: 11mm 14mm 12mm 14mm;
+    @frame footer_frame {
+        -pdf-frame-content: page-footer;
+        left: 14mm;
+        width: 182mm;
+        top: 281mm;
+        height: 10mm;
+    }
+}
+body {
+    font-family: Helvetica, Arial, sans-serif;
+    color: #243247;
+    font-size: 9pt;
+}
+table {
+    width: 100%;
+    border-spacing: 0;
+}
+.header {
+    text-align: center;
+    padding-bottom: 5px;
+    border-bottom: 3px solid #1d4ed8;
+}
+.school-name {
+    font-size: 19pt;
+    font-weight: bold;
+    color: #17345c;
+    margin: 0;
+}
+.school-contact {
+    font-size: 8pt;
+    color: #64748b;
+    margin-top: 2px;
+}
+.report-heading {
+    text-align: center;
+    font-size: 13pt;
+    color: #17345c;
+    font-weight: bold;
+    padding-top: 7px;
+}
+.report-subheading {
+    text-align: center;
+    color: #64748b;
+    font-size: 9pt;
+    padding-bottom: 7px;
+}
+.section-heading {
+    background-color: #eaf1fb;
+    color: #17345c;
+    font-size: 9pt;
+    font-weight: bold;
+    padding: 5px 8px;
+    margin-top: 7px;
+    margin-bottom: 4px;
+}
+.info-table td {
+    border: 1px solid #dbe3ed;
+    padding: 5px;
+    font-size: 9pt;
+}
+.info-label {
+    color: #64748b;
+    font-size: 7.5pt;
+}
+.result-table th {
+    background-color: #17345c;
+    color: #ffffff;
+    border: 1px solid #17345c;
+    padding: 5px 4px;
+    font-size: 7.5pt;
+    text-align: center;
+}
+.result-table td {
+    border: 1px solid #dbe3ed;
+    padding: 5px 4px;
+    font-size: 8pt;
+    text-align: center;
+}
+.result-table .subject {
+    text-align: left;
+    font-weight: bold;
+}
+.result-table .summary {
+    background-color: #eaf1fb;
+    font-weight: bold;
+}
+.note {
+    font-size: 8pt;
+    color: #64748b;
+    padding: 7px 0;
+}
+.attendance-table th {
+    background-color: #edf3fa;
+    color: #17345c;
+    padding: 7px 5px;
+    border: 1px solid #dbe3ed;
+    text-align: center;
+    font-size: 8pt;
+}
+.attendance-table td {
+    padding: 8px 5px;
+    border: 1px solid #dbe3ed;
+    text-align: center;
+    font-size: 9pt;
+}
+.grading-box {
+    border: 1px solid #dbe3ed;
+    background-color: #f8fafc;
+    padding: 9px;
+    font-size: 8pt;
+    margin-top: 12px;
+}
+.signature-table {
+    margin-top: 28px;
+}
+.signature-table td {
+    width: 50%;
+    padding: 8px;
+    font-size: 8pt;
+    vertical-align: bottom;
+}
+.signature-line {
+    padding-top: 22px;
+    color: #64748b;
+}
+#page-footer {
+    text-align: center;
+    font-size: 7pt;
+    color: #94a3b8;
+    border-top: 1px solid #dbe3ed;
+    padding-top: 5px;
+}
+</style>
 </head>
+
 <body>
 
-    <div class="header">
-        <h1 class="school-name">SCHOOL MANAGEMENT SYSTEM</h1>
-        <div class="report-title">{{ report_title }}</div>
-        <div style="font-size: 12px; color: #0284c7; font-weight: bold; margin-top: 4px;">{{ current_term }} &bull; ({{ date_range }})</div>
+<div class="header">
+    <div class="school-name">{{ school.name }}</div>
+    <div class="school-contact">
+        {% if school.address %}{{ school.address }}{% endif %}
+        {% if school.phone_number %} | Tel: {{ school.phone_number }}{% endif %}
+        {% if school.email %} | {{ school.email }}{% endif %}
     </div>
+</div>
 
-    <table class="student-info">
-        <tr>
-            <td><strong>Student Name:</strong> {{ student_profile.first_name }} {{ student_profile.last_name }}</td>
-            <td><strong>Registration No:</strong> {{ student_profile.registration_number }}</td>
-        </tr>
-        <tr>
-            <td><strong>Current Class:</strong> {{ student_profile.current_class|default:"N/A" }}</td>
-            <td><strong>Overall Attendance Rate:</strong> <span style="color: #0284c7;">{{ attendance_percentage }}%</span></td>
-        </tr>
-    </table>
+<div class="report-heading">{{ report_title|upper }}</div>
+<div class="report-subheading">
+    Academic Year {{ academic_year.name }} |
+    {{ current_term }}
+</div>
 
-    <h3>Academic Performance & Grades</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Subject / Course</th>
-                {% if term_param == '2' or term_param == '3' or report_scope == 'annual' %}
-                <th>Term 1 (%)</th>
-                <th>Term 2 (%)</th>
-                {% endif %}
-                {% if term_param == '3' or report_scope == 'annual' %}
-                <th>Term 3 (%)</th>
-                <th>Final (%)</th>
-                {% elif term_param == '1' %}
-                <th>CAT Score</th>
-                <th>Exam Score</th>
-                <th>Total Score</th>
+<div class="section-heading">STUDENT INFORMATION</div>
+
+<table class="info-table">
+    <tr>
+        <td>
+            <span class="info-label">STUDENT NAME</span><br>
+            <strong>{{ student_profile.first_name }} {{ student_profile.last_name }}</strong>
+        </td>
+        <td>
+            <span class="info-label">REGISTRATION NUMBER</span><br>
+            <strong>{{ student_profile.registration_number }}</strong>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <span class="info-label">ENROLLED CLASS</span><br>
+            <strong>{{ student_enrollment.class_stream.name }}</strong>
+        </td>
+        <td>
+            <span class="info-label">REPORTING PERIOD</span><br>
+            <strong>{{ current_term }}</strong>
+        </td>
+    </tr>
+</table>
+
+<div class="section-heading">ACADEMIC PERFORMANCE</div>
+
+<table class="result-table">
+    <thead>
+        <tr>
+            <th>SUBJECT</th>
+
+            {% if report_scope == "term" %}
+                <th>CAT</th>
+                <th>EXAM</th>
+                <th>TOTAL</th>
                 <th>%</th>
-                {% endif %}
-                <th>Grade</th>
-                <th>Remarks</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in table_rows %}
-            <tr>
-                <td><strong>{{ row.subject_name }}</strong></td>
-                
-                {% if term_param == '2' or term_param == '3' or report_scope == 'annual' %}
-                <td>{{ row.terms.1.percentage|default:"-"|floatformat:1 }}{% if row.terms.1 %}%{% endif %}</td>
-                <td>{{ row.terms.2.percentage|default:"-"|floatformat:1 }}{% if row.terms.2 %}%{% endif %}</td>
-                {% endif %}
-                
-                {% if term_param == '3' or report_scope == 'annual' %}
-                <td>{{ row.terms.3.percentage|default:"-"|floatformat:1 }}{% if row.terms.3 %}%{% endif %}</td>
-                <td style="font-weight: bold;">{{ row.final_percentage }}%</td>
-                {% elif term_param == '1' %}
-                <td>{{ row.terms.1.cat_marks|floatformat:0 }} / {{ row.terms.1.max_cat|floatformat:0 }}</td>
-                <td>{{ row.terms.1.exam_marks|floatformat:0 }} / {{ row.terms.1.max_exam|floatformat:0 }}</td>
-                <td>{{ row.terms.1.marks_obtained|floatformat:0 }} / {{ row.terms.1.max_marks|floatformat:0 }}</td>
-                <td>{{ row.terms.1.percentage|floatformat:1 }}%</td>
-                {% endif %}
-                
-                <td style="font-weight: bold; color: #0284c7;">{{ row.grade_letter }}</td>
-                <td>{{ row.remarks }}</td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="7" style="text-align: center; color: #64748b; padding: 15px;">No academic grades recorded for this scope yet.</td>
-            </tr>
-            {% endfor %}
-            
-            {% if table_rows %}
-            <tr style="background: #f8fafc; font-weight: bold;">
-                <td>AVERAGE STANDING</td>
-                {% if term_param == '2' or term_param == '3' or report_scope == 'annual' %}
-                <td colspan="2"></td>
-                {% endif %}
-                {% if term_param == '3' or report_scope == 'annual' %}
-                <td colspan="2"></td>
-                {% elif term_param == '1' %}
-                <td colspan="3"></td>
-                {% endif %}
-                <td style="color: #0284c7;">{{ average_percentage }}%</td>
-                <td style="color: #0284c7;">{{ avg_grade_letter }}</td>
-                <td>Overall Standing</td>
-            </tr>
+            {% elif report_scope == "cumulative" %}
+                <th>T1 %</th>
+                <th>T2 %</th>
+                <th>AVG %</th>
+            {% else %}
+                <th>T1 %</th>
+                <th>T2 %</th>
+                <th>T3 %</th>
+                <th>AVG %</th>
             {% endif %}
-        </tbody>
-    </table>
 
-    <h3>Attendance Summary</h3>
-    <table>
-        <tr>
-            <th>Total Logs</th>
-            <th>Days Present</th>
-            <th>Days Late</th>
-            <th>Days Absent</th>
+            <th>GRADE</th>
+            <th>REMARKS</th>
         </tr>
-        <tr>
-            <td>{{ total_records }}</td>
-            <td style="color: #16a34a; font-weight: bold;">{{ present_count }}</td>
-            <td style="color: #ca8a04; font-weight: bold;">{{ late_count }}</td>
-            <td style="color: #dc2626; font-weight: bold;">{{ absent_count }}</td>
-        </tr>
-    </table>
+    </thead>
 
-    <div class="footer">
-        <div class="footer-left">
-            <p><strong>Issued on:</strong> {{ issue_date }}</p>
-        </div>
-        <div class="footer-right">
-            <div class="signature-box">
-                Authorized Signature / Stamp
+    <tbody>
+        {% for row in table_rows %}
+        <tr>
+            <td class="subject">{{ row.subject_name }}</td>
+
+            {% if report_scope == "term" %}
+                <td>
+                    {% if row.terms.1 %}
+                        {{ row.terms.1.cat_marks|floatformat:1 }}/{{ row.terms.1.max_cat|floatformat:1 }}
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if row.terms.1 %}
+                        {{ row.terms.1.exam_marks|floatformat:1 }}/{{ row.terms.1.max_exam|floatformat:1 }}
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if row.terms.1 %}
+                        {{ row.terms.1.marks_obtained|floatformat:1 }}/{{ row.terms.1.max_marks|floatformat:1 }}
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if row.terms.1 %}
+                        {{ row.terms.1.percentage|floatformat:1 }}%
+                    {% else %}-{% endif %}
+                </td>
+
+            {% elif report_scope == "cumulative" %}
+                <td>
+                    {% if row.terms.1 %}{{ row.terms.1.percentage|floatformat:1 }}%{% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if row.terms.2 %}{{ row.terms.2.percentage|floatformat:1 }}%{% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if row.final_percentage != None %}
+                        {{ row.final_percentage|floatformat:1 }}%
+                    {% else %}-{% endif %}
+                </td>
+
+            {% else %}
+                <td>
+                    {% if row.terms.1 %}{{ row.terms.1.percentage|floatformat:1 }}%{% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if row.terms.2 %}{{ row.terms.2.percentage|floatformat:1 }}%{% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if row.terms.3 %}{{ row.terms.3.percentage|floatformat:1 }}%{% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if row.final_percentage != None %}
+                        {{ row.final_percentage|floatformat:1 }}%
+                    {% else %}-{% endif %}
+                </td>
+            {% endif %}
+
+            <td><strong>{{ row.grade_letter }}</strong></td>
+            <td>{{ row.remarks }}</td>
+        </tr>
+
+        {% empty %}
+        <tr>
+            <td colspan="8">
+                No finalized academic results available for this reporting period.
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="section-heading">OVERALL ACADEMIC STANDING</div>
+
+<table class="info-table">
+    <tr>
+        <td>
+            <span class="info-label">OVERALL AVERAGE</span><br>
+            {% if average_percentage != None %}
+                <strong>{{ average_percentage|floatformat:1 }}%</strong>
+            {% else %}
+                <strong>Not available</strong>
+            {% endif %}
+        </td>
+        <td>
+            <span class="info-label">OVERALL GRADE</span><br>
+            <strong>{{ avg_grade_letter }}</strong>
+        </td>
+    </tr>
+</table>
+
+{% if not report_complete %}
+<div class="note">
+    <strong>Result status:</strong>
+    Incomplete or unavailable finalized results.
+    An overall academic average has not been issued.
+</div>
+{% endif %}
+
+<div class="section-heading">CLASS ATTENDANCE SUMMARY</div>
+
+<table class="attendance-table">
+    <tr>
+        <th>TOTAL RECORDS</th>
+        <th>PRESENT</th>
+        <th>LATE</th>
+        <th>ABSENT</th>
+        <th>ATTENDANCE RATE</th>
+    </tr>
+    <tr>
+        <td>{{ total_records }}</td>
+        <td>{{ present_count }}</td>
+        <td>{{ late_count }}</td>
+        <td>{{ absent_count }}</td>
+        <td>
+            {% if attendance_percentage != None %}
+                {{ attendance_percentage }}%
+            {% else %}
+                N/A
+            {% endif %}
+        </td>
+    </tr>
+</table>
+
+<div class="note">
+    Attendance is calculated from recorded class sessions
+    in the selected reporting period. Late attendance counts
+    as attended. These figures do not necessarily represent
+    distinct school days.
+</div>
+
+<div class="grading-box">
+    <strong>GRADING SCALE</strong><br>
+    A: 80-100% (Excellent) |
+    B: 70-79% (Very Good) |
+    C: 60-69% (Good) |
+    D: 50-59% (Satisfactory) |
+    F: Below 50% (Fail)
+</div>
+
+<table class="signature-table">
+    <tr>
+        <td>
+            <strong>Class Teacher</strong>
+            <div class="signature-line">
+                ___________________________<br>
+                Signature
             </div>
-        </div>
-    </div>
-    <!-- Grading Scale Key -->
-    <div style="margin-top: 25px; font-size: 11px; border: 1px solid #cbd5e1; padding: 10px; background: #f8fafc; border-radius: 4px;">
-        <strong>GRADING SCALE:</strong> 
-        A: 80–100 (Excellent) &bull; 
-        B: 70–79 (Very Good) &bull; 
-        C: 60–69 (Good) &bull; 
-        D: 50–59 (Satisfactory) &bull; 
-        F: 0–49 (Fail)
-    </div>
+        </td>
+        <td>
+            <strong>Head Teacher / School Stamp</strong>
+            <div class="signature-line">
+                ___________________________<br>
+                Signature and Official Stamp
+            </div>
+        </td>
+    </tr>
+</table>
 
-    <!-- Signatures -->
-    <div class="footer" style="margin-top: 40px; width: 100%;">
-        <table style="width: 100%; border: none;">
-            <tr>
-                <td style="border: none; width: 50%;">
-                    Class Teacher Signature:<br><br>
-                    ___________________________
-                </td>
-                <td style="border: none; width: 50%; text-align: right;">
-                    Head Teacher Signature & Stamp:<br><br>
-                    ___________________________
-                </td>
-            </tr>
-        </table>
-    </div>
+<div class="note">
+    Date issued: {{ issue_date }}
+</div>
+
+<div id="page-footer">
+    {{ school.name }} | Academic Year {{ academic_year.name }}
+    | Generated by School Management System
+</div>
 
 </body>
 </html>

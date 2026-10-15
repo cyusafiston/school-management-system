@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Curriculum Requirement | {{ school.name }}</title>
+</head>
+<body>
+    <main>
+        <h1>Edit Curriculum Requirement</h1>
+
+        <p><strong>School:</strong> {{ school.name }}</p>
+        <p><strong>Academic Year:</strong> {{ assignment.academic_year.name }}</p>
+        <p><strong>Class:</strong> {{ assignment.class_stream.name }}</p>
+        <p><strong>Subject:</strong> {{ assignment.subject.name }}</p>
+
+        <hr>
+
+        <form method="post">
+            {% csrf_token %}
+
+            {{ form.non_field_errors }}
+            {{ form.as_p }}
+
+            <button type="submit">
+                Save Changes
+            </button>
+        </form>
+
+        <p>
+            <a href="{% url 'curriculum_management' %}">
+                Cancel and Return to Curriculum
+            </a>
+        </p>
+    </main>
+</body>
+</html>

@@ -78,3 +78,23 @@ pip-wheel-metadata/
 # 12. Local Configuration Overrides
 settings_local.py
 local_settings.py
+
+/database_backups/
+
+# Development snapshots and temporary test artifacts
+*_step[0-9]*_backup*
+*.step[0-9]*_backup*
+*_step[0-9]*_before_*
+*.step[0-9]*_before_*
+step[0-9]*_test.py
+step[0-9]*_pdf_test.py
+step[0-9]*_download_test.py
+step[0-9]*_report_card_test.py
+step[0-9]*_unconfigured_subject_test.py
+step[0-9]*_missing_required_test.py
+step[0-9]*_optional_grade_test.py
+step[0-9]*_cross_school_report_test.py
+step[0-9]*_finalize_curriculum_test.py
+step[0-9]*_pdf_diagnostic.py
+report_card_step[0-9]*.pdf
+/release_format_backups/

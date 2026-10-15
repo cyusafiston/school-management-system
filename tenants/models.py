@@ -4,7 +4,6 @@ from django.db import models
 from django.db.models import Q
 from django.utils.text import slugify
 
-
 class School(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending Approval"
@@ -95,3 +94,35 @@ class SchoolMembership(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.school.name} ({self.role})"
+
+
+class StudentRegistrationCounter(models.Model):
+    """
+    Tracks student registration numbers separately
+    for each school and registration year.
+    """
+
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.PROTECT,
+        related_name="student_registration_counters",
+    )
+
+    year = models.PositiveIntegerField()
+
+    last_number = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "year"],
+                name="unique_student_counter_per_school_year",
+            ),
+        ]
+        ordering = ["school", "year"]
+
+    def __str__(self):
+        return (
+            f"{self.school.name} - {self.year}: "
+            f"{self.last_number}"
+        )

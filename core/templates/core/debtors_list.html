@@ -11,7 +11,10 @@
         <!-- Top Nav -->
         <header class="bg-blue-900 text-white shadow">
             <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-                <h1 class="text-xl font-bold">Accountant Portal — Outstanding Debtors</h1>
+                <div>
+                    <h1 class="text-xl font-bold">Accountant Portal — Outstanding Debtors</h1>
+                    <p class="text-sm text-blue-100 mt-1">{{ school.name }}</p>
+                </div>
                 <a href="{% url 'accountant_dashboard' %}" class="bg-blue-800 text-sm px-3 py-1 rounded hover:bg-blue-700 transition">Back to Dashboard</a>
             </div>
         </header>
@@ -53,7 +56,11 @@
                             {% empty %}
                             <tr>
                                 <td colspan="5" class="px-6 py-8 text-center text-sm text-gray-500">
-                                    No debtors found! All enrolled students have fully cleared their fees for this term. 🎉
+                                    {% if not finance_ready %}
+                                    No current academic year and term have been configured for this school.
+                                    {% else %}
+                                    No outstanding balances found among enrolled students for this term.
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}

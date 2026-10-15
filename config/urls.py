@@ -1,336 +1,329 @@
-from django.conf import settings
-from django.views.static import serve
+from core.views import generate_student_report_card as report_card_pdf_view
+
+"""
+URL configuration for the School Management System.
+
+SAAS TRANSITION - TEMPORARY SECURITY CONFIGURATION
+
+Enabled:
+- Platform superuser administration
+- Authentication and password recovery
+- Role-based login redirect
+- Membership-protected school landing page
+
+Legacy school-management routes are temporarily disabled until
+school-level authorization and database isolation are implemented.
+"""
+
 from django.contrib import admin
+
+# Platform Admin is reserved for active platform superusers.
+# School administrators use their school dashboards instead.
+def platform_admin_has_permission(request):
+    user = request.user
+    return bool(
+        user.is_authenticated
+        and user.is_active
+        and user.is_staff
+        and user.is_superuser
+    )
+
+
+admin.site.has_permission = platform_admin_has_permission
+
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import LogoutView
 from django.urls import path
-from django.contrib.auth import views as auth_views
 
 from core import views
-from core.views import student_finances_view
+from tenants.platform_admin import configure_platform_admin
+from tenants.views import school_home, register_school
+
+
+# Restrict the existing Django admin to platform superusers.
+configure_platform_admin()
 
 
 urlpatterns = [
+    path(
+        "student/report-card/download/",
+        report_card_pdf_view,
+        name="student_report_card",
+    ),
+
+
+    # SECURED SCHOOL TEACHER DASHBOARD
+    path(
+        "school/teacher/dashboard/",
+        views.teacher_dashboard,
+        name="teacher_dashboard",
+    ),
+
+    path(
+        "school/teacher/classes/",
+        views.teacher_classes_view,
+        name="teacher_classes",
+    ),
+
+    path(
+        "school/teacher/classes/<int:assignment_id>/students/",
+        views.class_students_view,
+        name="class_students",
+    ),
+
+
+    # SECURED TEACHER SUBJECT ATTENDANCE
+    path(
+        "school/teacher/classes/<int:assignment_id>/attendance/",
+        views.take_attendance_view,
+        name="take_attendance",
+    ),
+
+
+    # SECURED TEACHER DAILY ATTENDANCE
+    path(
+        "school/teacher/attendance/daily/",
+        views.take_daily_attendance,
+        name="take_daily_attendance",
+    ),
+    path(
+        "school/teacher/attendance/daily/<int:class_id>/",
+        views.take_daily_attendance,
+        name="take_daily_attendance_class",
+    ),
+
+    # SECURED TEACHER GRADE ENTRY
+    path(
+        "school/teacher/classes/<int:assignment_id>/grades/",
+        views.input_grades_view,
+        name="input_grades",
+    ),
+
+    path(
+        "school/teacher/classes/<int:assignment_id>/grades/<int:grade_id>/finalize/",
+        views.finalize_grade_view,
+        name="finalize_grade",
+    ),
+
+
     # ============================================================
-    # ADMIN
+    # PLATFORM ADMINISTRATION
     # ============================================================
-    path('admin/', admin.site.urls),
+    path(
+        "admin/",
+        admin.site.urls,
+    ),
 
     # ============================================================
     # AUTHENTICATION
     # ============================================================
+    # Public school application
     path(
-        'login/',
+        "register-school/",
+        register_school,
+        name="register_school",
+    ),
+
+
+    path(
+        "login/",
         views.custom_login_view,
-        name='login'
+        name="login",
     ),
 
     path(
-        'logout/',
-        LogoutView.as_view(next_page='/login/'),
-        name='logout'
+        "logout/",
+        LogoutView.as_view(next_page="/login/"),
+        name="logout",
     ),
 
-    # ------------------------------------------------------------
-    # Password Reset / Forgot Password
-    # ------------------------------------------------------------
+    # ============================================================
+    # PASSWORD RESET / FORGOT PASSWORD
+    # ============================================================
     path(
-        'forgot-password/',
+        "forgot-password/",
         auth_views.PasswordResetView.as_view(
-            template_name='core/password_reset_form.html',
-            email_template_name='core/password_reset_email.html',
-            subject_template_name='core/password_reset_subject.txt',
-            success_url='/forgot-password/sent/',
+            template_name="core/password_reset_form.html",
+            email_template_name="core/password_reset_email.html",
+            subject_template_name="core/password_reset_subject.txt",
+            success_url="/forgot-password/sent/",
         ),
-        name='password_reset',
+        name="password_reset",
     ),
 
     path(
-        'forgot-password/sent/',
+        "forgot-password/sent/",
         auth_views.PasswordResetDoneView.as_view(
-            template_name='core/password_reset_done.html',
+            template_name="core/password_reset_done.html",
         ),
-        name='password_reset_done',
+        name="password_reset_done",
     ),
 
     path(
-        'reset/<uidb64>/<token>/',
+        "reset/<uidb64>/<token>/",
         auth_views.PasswordResetConfirmView.as_view(
-            template_name='core/password_reset_confirm.html',
-            success_url='/reset-password-complete/',
+            template_name="core/password_reset_confirm.html",
+            success_url="/reset-password-complete/",
         ),
-        name='password_reset_confirm',
+        name="password_reset_confirm",
     ),
 
     path(
-        'reset-password-complete/',
+        "reset-password-complete/",
         auth_views.PasswordResetCompleteView.as_view(
-            template_name='core/password_reset_complete.html',
+            template_name="core/password_reset_complete.html",
         ),
-        name='password_reset_complete',
+        name="password_reset_complete",
     ),
 
     # ============================================================
-    # ROLE & DASHBOARD
+    # ROLE-BASED REDIRECT
     # ============================================================
     path(
-        'dashboard/redirect/',
+        "dashboard/redirect/",
         views.role_based_redirect_view,
-        name='role_redirect'
-    ),
-
-    path(
-        'accountant/dashboard/',
-        views.accountant_dashboard,
-        name='accountant_dashboard'
-    ),
-
-    path(
-        'teacher/dashboard/',
-        views.teacher_dashboard,
-        name='teacher_dashboard'
-    ),
-
-    path(
-        'teacher/grades/<int:assignment_id>/',
-        views.input_grades_view,
-        name='input_grades'
-    ),
-
-    path(
-        'teacher/class/<int:assignment_id>/students/',
-        views.class_students_view,
-        name='class_students'
-    ),
-
-    path(
-        'teacher/class/<int:assignment_id>/attendance/',
-        views.take_attendance_view,
-        name='take_attendance'
-    ),
-
-    path(
-        'teacher/student/<int:student_id>/profile/',
-        views.student_academic_profile_view,
-        name='student_academic_profile'
+        name="role_redirect",
     ),
 
     # ============================================================
-    # ATTENDANCE
+    # SCHOOL PORTAL - TENANT PROTECTED
     # ============================================================
     path(
-        'school-admin/attendance/report/',
-        views.admin_attendance_report_view,
-        name='admin_attendance_report'
+        "school/",
+        school_home,
+        name="school_home",
     ),
-
     path(
-        'school-admin/subject-attendance/report/',
-        views.admin_subject_attendance_report_view,
-        name='admin_subject_attendance_report'
+        "school/curriculum/",
+        __import__(
+            "tenants.views",
+            fromlist=["curriculum_management"]
+        ).curriculum_management,
+        name="curriculum_management",
     ),
-
-    path(
-        'attendance/daily/',
-        views.take_daily_attendance,
-        name='take_daily_attendance'
-    ),
-
-    path(
-        'attendance/daily/<int:class_id>/',
-        views.take_daily_attendance,
-        name='take_daily_attendance_class'
-    ),
-
     # ============================================================
-    # STUDENT PORTAL
-    # ============================================================
-    path(
-        'student/dashboard/',
-        views.student_dashboard,
-        name='student_dashboard'
-    ),
+# SCHOOL FINANCE - TENANT-PROTECTED PAYMENT WORKFLOW
+# ============================================================
 
     path(
-        'student/change-password/',
-        views.StudentPasswordChangeView.as_view(),
-        name='change_password'
-    ),
-
-    path(
-        'teacher/change-password/',
-        views.TeacherPasswordChangeView.as_view(),
-        name='teacher_change_password'
-    ),
-
-    path(
-        'student/homework/',
-        views.student_homework_view,
-        name='student_homework'
-    ),
-
-    path(
-        'student/grades/',
-        views.student_grades,
-        name='student_grades'
-    ),
-
-    path(
-        'student/attendance/',
-        views.student_attendance_view,
-        name='student_attendance'
-    ),
-
-    path(
-        'student/report-card/download/',
-        views.generate_student_report_card,
-        name='student_report_card'
-    ),
-
-    path(
-        'finances/',
-        views.student_finances_view,
-        name='student_finances'
-    ),
-
-    # ============================================================
-    # TEACHER PORTAL
-    # ============================================================
-    path(
-        'teacher/assignment/<int:assignment_id>/homework/',
-        views.teacher_homework_view,
-        name='teacher_homework'
-    ),
-
-    path(
-        'teacher/classes/',
-        views.teacher_classes_view,
-        name='teacher_classes'
-    ),
-
-    path(
-        'teacher/schedule/',
-        views.teacher_schedule_view,
-        name='teacher_schedule'
-    ),
-
-    path(
-        'teacher/notices/',
-        views.teacher_notices_view,
-        name='teacher_notices'
-    ),
-
-    path(
-        'teacher/grades/',
-        views.teacher_grades_list_view,
-        name='teacher_grades_list'
-    ),
-
-    path(
-        'teacher/homework/',
-        views.teacher_homework_list_view,
-        name='teacher_homework_list'
-    ),
-
-    path(
-        'teacher/assignment/<int:assignment_id>/grades/input/',
-        views.teacher_enter_grades_view,
-        name='teacher_enter_grades'
-    ),
-
-    path(
-        'teacher/assignment/<int:assignment_id>/homework/manage/',
-        views.teacher_homework_manage_view,
-        name='teacher_homework_manage'
-    ),
-
-    # ============================================================
-    # ACCOUNTANT
-    # ============================================================
-    path(
-        'accountant/record-payment/',
-        views.record_payment,
-        name='record_payment'
-    ),
-
-    path(
-        'accountant/debtors/',
-        views.debtors_list,
-        name='debtors_list'
-    ),
-
-    path(
-        'accountant/receipt/<int:payment_id>/',
-        views.payment_receipt,
-        name='payment_receipt'
-    ),
-
-    path(
-        'accountant/collections/daily/',
-        views.daily_collections,
-        name='daily_collections'
-    ),
-
-    path(
-        'accountant/payment/<int:payment_id>/void/',
-        views.void_payment_view,
-        name='void_payment'
-    ),
-
-    path(
-        'accountant/student/<int:student_id>/statement/',
-        views.student_financial_statement,
-        name='student_financial_statement'
-    ),
-
-    path(
-        'accountant/reports/daily/',
+        "school/finance/reports/daily/",
         views.daily_collection_report,
-        name='daily_collection_report'
+        name="daily_collection_report",
     ),
 
     path(
-        'accountant/reports/class-collections/',
+        "school/finance/debtors/",
+        views.debtors_list,
+        name="debtors_list",
+    ),
+path(
+    "school/finance/configuration/",
+    views.fee_configuration,
+    name="fee_configuration",
+),
+
+path(
+    "school/finance/dashboard/",
+    views.accountant_dashboard,
+    name="accountant_dashboard",
+),
+
+path(
+    "school/finance/students/search/",
+    views.student_search,
+    name="student_search",
+),
+
+path(
+    "school/finance/students/<int:student_id>/profile/",
+    views.student_financial_profile,
+    name="student_financial_profile",
+),
+
+
+
+path(
+    "school/finance/payments/new/",
+    views.record_payment,
+    name="record_payment",
+),
+
+path(
+    "school/finance/payments/<int:payment_id>/receipt/",
+    views.payment_receipt,
+    name="payment_receipt",
+),
+
+path(
+    "school/finance/payments/<int:payment_id>/void/",
+    views.void_payment_view,
+    name="void_payment",
+),
+
+
+    path(
+        "school/finance/reports/classes/",
         views.class_collections_report,
-        name='class_collections_report'
+        name="class_collections_report",
     ),
-
     path(
-        'accountant/reports/class-collections/<int:class_id>/',
+        "school/finance/reports/classes/<int:class_id>/",
         views.class_collection_detail,
-        name='class_collection_detail'
+        name="class_collection_detail",
+    ),
+    path(
+        "school/curriculum/remove/<int:assignment_id>/",
+        __import__(
+            "tenants.views",
+            fromlist=["remove_curriculum_assignment"]
+        ).remove_curriculum_assignment,
+        name="remove_curriculum_assignment",
+    ),
+    path(
+        "school/curriculum/edit/<int:assignment_id>/",
+        __import__(
+            "tenants.views",
+            fromlist=["edit_curriculum_requirement"]
+        ).edit_curriculum_requirement,
+        name="edit_curriculum_requirement",
     ),
 
     path(
-        'accountant/student/<int:student_id>/profile/',
-        views.accountant_student_profile,
-        name='accountant_student_profile'
+        "school/attendance/reports/daily/",
+        views.admin_attendance_report_view,
+        name="admin_attendance_report",
     ),
-
     path(
-        'accountant/student/<int:student_id>/financial/',
-        views.student_financial_profile,
-        name='student_financial_profile'
-    ),
-
-    # ============================================================
-    # STUDENT SEARCH
-    # ============================================================
-    path(
-        'students/search/',
-        views.student_search,
-        name='student_search'
+        "school/attendance/reports/subjects/",
+        views.admin_subject_attendance_report_view,
+        name="admin_subject_attendance_report",
     ),
 ]
 
 
 # ================================================================
-# MEDIA FILES
+# TEMPORARILY DISABLED LEGACY ROUTES
 # ================================================================
-# Serve uploaded media files during development
-urlpatterns += [
-    path(
-        'media/<path:path>',
-        serve,
-        {'document_root': settings.MEDIA_ROOT}
-    ),
-]
+#
+# Teacher dashboard and management
+# Student dashboard and academic records
+# Accountant dashboard and payments
+# Financial reports and receipts
+# Student search and profiles
+# Attendance and grades
+# Homework and notices
+#
+# These routes will be restored individually after implementing:
+#
+# 1. Approved school membership verification
+# 2. School-specific role permissions
+# 3. School-filtered database queries
+# 4. Cross-school object access protection
+# 5. Automated tenant-isolation security tests
+#
+# IMPORTANT:
+# Do not restore these routes until their views are tenant-safe.
+#
+# Uploaded media is also not served through an unrestricted
+# development URL here. Private files will require access controls.
+# ================================================================

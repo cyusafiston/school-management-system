@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ school.name }} | School Portal</title>
+</head>
+<body>
+    <main>
+        <h1>{{ school.name }}</h1>
+
+        <p>Welcome to your school portal.</p>
+
+        <p>
+            <strong>Your role:</strong>
+            {{ membership.get_role_display }}
+        </p>
+
+        <p>
+            <strong>School status:</strong>
+            {{ school.get_status_display }}
+        </p>
+
+        {% if school_role == "administrator" %}
+        <h2>School Administration</h2>
+        <p>
+            <a href="{% url 'curriculum_management' %}">
+                Manage Class Curriculum
+            </a>
+        </p>
+        {% elif school_role == "teacher" %}
+        <p>
+            <a href="{% url 'teacher_dashboard' %}">
+                Open Teacher Dashboard
+            </a>
+        </p>
+        {% else %}
+        <p>
+            Your school's management features are being prepared.
+        </p>
+        {% endif %}
+    </main>
+</body>
+</html>

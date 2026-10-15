@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register Your School | School Management System</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 32px 16px;
+            background: #f3f6fb;
+            font-family: Arial, sans-serif;
+            color: #1e293b;
+        }
+        .container {
+            max-width: 620px;
+            margin: auto;
+            background: white;
+            padding: 32px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(15, 23, 42, .08);
+        }
+        h1 { margin-bottom: 8px; font-size: 28px; }
+        .subtitle { color: #64748b; margin-bottom: 28px; }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 7px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font: inherit;
+        }
+        .field { margin-bottom: 20px; }
+        .helptext {
+            display: block;
+            color: #64748b;
+            font-size: 13px;
+            margin-top: 6px;
+        }
+        .errorlist {
+            color: #b91c1c;
+            font-size: 14px;
+            padding-left: 20px;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            background: #2563eb;
+            color: white;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover { background: #1d4ed8; }
+        .footer {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 14px;
+        }
+        a { color: #2563eb; }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <h1>Register Your School</h1>
+        <p class="subtitle">
+            Create your school account and submit an application
+            for platform approval.
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+
+            {{ form.non_field_errors }}
+
+            {% for field in form %}
+                <div class="field">
+                    <label for="{{ field.id_for_label }}">
+                        {{ field.label }}
+                    </label>
+
+                    {{ field }}
+
+                    {% if field.help_text %}
+                        <small class="helptext">{{ field.help_text }}</small>
+                    {% endif %}
+
+                    {{ field.errors }}
+                </div>
+            {% endfor %}
+
+            <button type="submit">Submit School Application</button>
+        </form>
+
+        <div class="footer">
+            Already have an account?
+            <a href="{% url 'login' %}">Sign in</a>
+            <p>
+                Your school must be approved before you can
+                access its management dashboard.
+            </p>
+        </div>
+    </main>
+</body>
+</html>

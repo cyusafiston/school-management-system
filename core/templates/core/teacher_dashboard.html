@@ -43,7 +43,7 @@
                     Attendance Module
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="attendanceDropdown">
-                    <li><a class="dropdown-item" href="{% url 'take_daily_attendance' %}">Daily Class Roll Call</a></li>
+                    <li><span title="This module is being secured" style="display:inline-block;opacity:.55;cursor:not-allowed;">Daily Class Roll Call <small>(Coming soon)</small></span></li>
                     <li><hr class="dropdown-divider border-secondary"></li>
                     <li><a class="dropdown-item" href="#">Subject/Assignment Attendance</a></li>
                 </ul>
@@ -68,10 +68,10 @@
                 <td>{{ assignment.current_class.name }}</td>
                 <td>{{ assignment.term }}</td>
                 <td>
-                    <a href="{% url 'class_students' assignment.id %}" class="action-link btn-students">View Students</a>
-                    <a href="{% url 'input_grades' assignment.id %}" class="action-link btn-grades">Input Grades</a>
-                    <a href="{% url 'take_attendance' assignment.id %}" class="action-link btn-attendance">Subject Attendance</a>
-                    <a href="{% url 'teacher_homework' assignment.id %}" style="background-color: #7b1fa2; color: white; padding: 5px 10px; text-decoration: none; border-radius: 4px;">Homework</a>
+                    <span title="This module is being secured" style="display:inline-block;opacity:.55;cursor:not-allowed;">View Students <small>(Coming soon)</small></span>
+                    <span title="This module is being secured" style="display:inline-block;opacity:.55;cursor:not-allowed;">Input Grades <small>(Coming soon)</small></span>
+                    <span title="This module is being secured" style="display:inline-block;opacity:.55;cursor:not-allowed;">Subject Attendance <small>(Coming soon)</small></span>
+                    <span title="This module is being secured" style="display:inline-block;opacity:.55;cursor:not-allowed;">Homework <small>(Coming soon)</small></span>
                 </td>
             </tr>
             {% empty %}

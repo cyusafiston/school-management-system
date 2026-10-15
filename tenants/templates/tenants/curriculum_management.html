@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curriculum Management | {{ school.name }}</title>
+</head>
+<body>
+    <main>
+        <h1>Curriculum Management</h1>
+        <p><strong>School:</strong> {{ school.name }}</p>
+
+        <h2>Academic Years</h2>
+        <ul>
+            {% for year in academic_years %}
+                <li>{{ year.name }}</li>
+            {% empty %}
+                <li>No academic years configured.</li>
+            {% endfor %}
+        </ul>
+
+        <h2>Classes</h2>
+        <ul>
+            {% for class in classes %}
+                <li>{{ class.name }}</li>
+            {% empty %}
+                <li>No classes configured.</li>
+            {% endfor %}
+        </ul>
+
+        <h2>Assign Subject to Class</h2>
+
+        <form method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            {{ form.as_p }}
+            <button type="submit">Save Curriculum Assignment</button>
+        </form>
+
+        <hr>
+
+        <h2>Curriculum Assignments</h2>
+        <table border="1" cellpadding="8">
+            <thead>
+                <tr>
+                    <th>Academic Year</th>
+                    <th>Class</th>
+                    <th>Subject</th>
+                    <th>Type</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in curriculum %}
+                <tr>
+                    <td>{{ item.academic_year.name }}</td>
+                    <td>{{ item.class_stream.name }}</td>
+                    <td>{{ item.subject.name }}</td>
+                    <td>
+                        {% if item.is_required %}
+                            Required
+                        {% else %}
+                            Optional
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'edit_curriculum_requirement' item.pk %}">
+                            Edit
+                        </a>
+
+                        <form
+                            method="post"
+                            action="{% url 'remove_curriculum_assignment' item.pk %}"
+                        >
+                            {% csrf_token %}
+                            <button
+                                type="submit"
+                                onclick="return confirm('Remove this curriculum assignment?');"
+                            >
+                                Remove
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5">No curriculum assignments yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <p><a href="{% url 'school_home' %}">Back to School Portal</a></p>
+    </main>
+</body>
+</html>

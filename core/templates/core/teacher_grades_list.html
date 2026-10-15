@@ -14,7 +14,7 @@
                 <h3 class="text-lg font-bold text-white mt-2">{{ assignment.current_class.name }}</h3>
                 <p class="text-xs text-slate-400 mt-1">Term: {{ assignment.term.name }}</p>
             </div>
-            <a href="{% url 'teacher_enter_grades' assignment.id %}" class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg text-sm font-medium no-underline transition-colors shadow">
+            <a href="{% url 'input_grades' assignment.id %}" class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg text-sm font-medium no-underline transition-colors shadow">
     <i class="fas fa-pen-to-square mr-1.5"></i> Enter Grades
 </a>
         </div>

@@ -59,7 +59,7 @@
                                 <tr>
                                     <!-- Clickable Registration Number routing to student personal & parent profile -->
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                        <a href="{% url 'accountant_student_profile' item.student.id %}" class="text-blue-600 hover:text-blue-900 hover:underline">
+                                        <a href="{% url 'student_financial_profile' item.student.id %}" class="text-blue-600 hover:text-blue-900 hover:underline">
                                             {{ item.student.registration_number }}
                                         </a>
                                     </td>

@@ -53,20 +53,10 @@
                         <strong>{{ item.student.first_name }} {{ item.student.last_name }}</strong><br>
                         <span style="color: #94a3b8; font-size: 12px;">{{ item.student.registration_number }}</span>
                     </td>
+                    <td><span style="color:#94a3b8;">Coming soon</span></td>
+                    <td><span style="color:#94a3b8;">Coming soon</span></td>
                     <td>
-                        {% if item.grade %}
-                            {{ item.grade.marks_obtained }} ({{ item.grade.grade_letter }})
-                        {% else %}
-                            <span style="color: #64748b; font-size: 13px;">Not Graded</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <span class="badge badge-present" title="Present">{{ item.present }}P</span>
-                        <span class="badge badge-absent" title="Absent">{{ item.absent }}A</span>
-                        <span class="badge badge-late" title="Late">{{ item.late }}L</span>
-                    </td>
-                    <td>
-                        <a href="{% url 'student_academic_profile' item.student.id %}" class="profile-link">View Academic Profile</a>
+                        <span style="color:#94a3b8;">Academic Profile (Coming soon)</span>
                     </td>
                 </tr>
                 {% empty %}
