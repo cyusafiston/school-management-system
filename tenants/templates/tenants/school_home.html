@@ -266,6 +266,10 @@
                 Manage Teachers
             </a>
 
+            <a class="nav-link" href="{% url 'teacher_assignment_management' %}">
+                Teacher Assignments
+            </a>
+
             <a class="nav-link" href="{% url 'accountant_dashboard' %}">
                 Finance
             </a>
@@ -347,6 +351,18 @@
                         belonging to your school.
                     </p>
                     <span class="card-action">Manage Teachers &rarr;</span>
+                </a>
+
+                <a class="card" href="{% url 'teacher_assignment_management' %}">
+                    <div class="card-icon">&#128221;</div>
+                    <h3>Teacher Assignments</h3>
+                    <p>
+                        Assign registered teachers to classes,
+                        curriculum subjects, and academic terms.
+                    </p>
+                    <span class="card-action">
+                        Manage Assignments &rarr;
+                    </span>
                 </a>
 
                 <a class="card" href="{% url 'curriculum_management' %}">

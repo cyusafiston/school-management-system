@@ -400,3 +400,76 @@ def teacher_management(request):
             "teachers": teachers,
         },
     )
+
+
+# STEP 906 - TENANT-SAFE TEACHER ASSIGNMENT MANAGEMENT
+@login_required
+def teacher_assignment_management(request):
+    """Manage teaching assignments for the authenticated school."""
+    from django.contrib import messages
+    from django.db import IntegrityError, transaction
+    from django.shortcuts import redirect, render
+
+    from core.models import TeacherAssignment
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+    )
+    from tenants.forms import TeacherAssignmentForm
+
+    context = require_school_context(request.user)
+    require_school_role(context, "administrator")
+
+    school = context.school
+
+    if request.method == "POST":
+        form = TeacherAssignmentForm(
+            request.POST,
+            school=school,
+        )
+
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    form.save()
+            except IntegrityError:
+                form.add_error(
+                    None,
+                    "The assignment could not be saved. "
+                    "Please check for an existing assignment.",
+                )
+            else:
+                messages.success(
+                    request,
+                    "Teacher assignment created successfully.",
+                )
+                return redirect("teacher_assignment_management")
+    else:
+        form = TeacherAssignmentForm(school=school)
+
+    assignments = (
+        TeacherAssignment.objects
+        .filter(school=school)
+        .select_related(
+            "teacher",
+            "subject",
+            "current_class",
+            "term",
+            "term__academic_year",
+        )
+        .order_by(
+            "current_class__name",
+            "subject__name",
+            "teacher__username",
+        )
+    )
+
+    return render(
+        request,
+        "tenants/teacher_assignment_management.html",
+        {
+            "school": school,
+            "form": form,
+            "assignments": assignments,
+        },
+    )

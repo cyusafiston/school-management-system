@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1">
+    <title>Teacher Assignments | {{ school.name }}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        a { color: #93c5fd; text-decoration: none; }
+        h1 { margin-bottom: 6px; }
+        .subtitle { color: #94a3b8; margin-bottom: 28px; }
+        .panel {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin: 16px 0 7px;
+        }
+        select, input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 7px;
+            border: 1px solid #475569;
+            background: #0f172a;
+            color: white;
+        }
+        button {
+            margin-top: 22px;
+            background: #2563eb;
+            color: white;
+            border: 0;
+            border-radius: 7px;
+            padding: 13px 22px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover { background: #1d4ed8; }
+        .errorlist { color: #fca5a5; }
+        .message {
+            padding: 12px;
+            background: #334155;
+            border-radius: 7px;
+            margin-bottom: 14px;
+        }
+        .table-wrap { overflow-x: auto; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 13px;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+        th { color: #93c5fd; }
+        .empty { color: #94a3b8; }
+    </style>
+</head>
+<body>
+<main class="container">
+    <p>
+        <a href="{% url 'teacher_management' %}">
+            &larr; Back to Teacher Management
+        </a>
+    </p>
+
+    <h1>Teacher Assignment Management</h1>
+    <p class="subtitle">{{ school.name }}</p>
+
+    {% for message in messages %}
+        <div class="message">{{ message }}</div>
+    {% endfor %}
+
+    <section class="panel">
+        <h2>Create Teacher Assignment</h2>
+        <p class="subtitle">
+            Assign an active teacher to a class,
+            curriculum subject, and academic term.
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+
+            {{ form.non_field_errors }}
+
+            {% for field in form %}
+                <label for="{{ field.id_for_label }}">
+                    {{ field.label }}
+                </label>
+                {{ field }}
+                {{ field.errors }}
+            {% endfor %}
+
+            <button type="submit">
+                Create Assignment
+            </button>
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Existing Assignments ({{ assignments|length }})</h2>
+
+        {% if assignments %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Teacher</th>
+                            <th>Class</th>
+                            <th>Subject</th>
+                            <th>Academic Term</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for assignment in assignments %}
+                            <tr>
+                                <td>
+                                    {{ assignment.teacher.get_full_name|default:assignment.teacher.username }}
+                                </td>
+                                <td>{{ assignment.current_class.name }}</td>
+                                <td>{{ assignment.subject.name }}</td>
+                                <td>
+                                    {{ assignment.term.name }}
+                                    ({{ assignment.term.academic_year.name }})
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="empty">
+                No teacher assignments have been created yet.
+            </p>
+        {% endif %}
+    </section>
+</main>
+</body>
+</html>

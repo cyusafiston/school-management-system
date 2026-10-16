@@ -349,3 +349,130 @@ class TeacherRegistrationForm(teacher_forms.Form):
             )
 
         return user
+
+
+# STEP 904 - TENANT-SAFE TEACHER ASSIGNMENT
+from django import forms as assignment_forms
+
+
+class TeacherAssignmentForm(assignment_forms.ModelForm):
+    """Create teacher assignments within one approved school."""
+
+    class Meta:
+        model = __import__(
+            "core.models",
+            fromlist=["TeacherAssignment"],
+        ).TeacherAssignment
+
+        fields = [
+            "teacher",
+            "current_class",
+            "subject",
+            "term",
+        ]
+
+        labels = {
+            "teacher": "Teacher",
+            "current_class": "Class",
+            "subject": "Subject",
+            "term": "Academic Term",
+        }
+
+    def __init__(self, *args, school, **kwargs):
+        from django.contrib.auth import get_user_model
+        from core.models import ClassStream, Subject, Term
+        from tenants.models import SchoolMembership
+
+        if school is None or school.pk is None:
+            raise ValueError("A saved school is required.")
+
+        self.school = school
+        super().__init__(*args, **kwargs)
+
+        # School comes from authenticated context, never POST data.
+        self.instance.school = school
+
+        User = get_user_model()
+
+        teacher_ids = SchoolMembership.objects.filter(
+            school=school,
+            role=SchoolMembership.Role.TEACHER,
+            is_active=True,
+            user__is_active=True,
+        ).values_list("user_id", flat=True)
+
+        self.fields["teacher"].queryset = (
+            User.objects.filter(pk__in=teacher_ids)
+            .order_by("first_name", "last_name", "username")
+        )
+
+        self.fields["current_class"].queryset = (
+            ClassStream.objects.filter(school=school)
+            .order_by("name")
+        )
+
+        self.fields["subject"].queryset = (
+            Subject.objects.filter(school=school)
+            .order_by("name")
+        )
+
+        self.fields["term"].queryset = (
+            Term.objects.filter(
+                school=school,
+                academic_year__school=school,
+            )
+            .order_by("-academic_year_id", "name")
+        )
+
+    def clean(self):
+        from core.models import ClassSubject, TeacherAssignment
+
+        cleaned_data = super().clean()
+
+        teacher = cleaned_data.get("teacher")
+        current_class = cleaned_data.get("current_class")
+        subject = cleaned_data.get("subject")
+        term = cleaned_data.get("term")
+
+        if not all([teacher, current_class, subject, term]):
+            return cleaned_data
+
+        curriculum_exists = ClassSubject.objects.filter(
+            school=self.school,
+            academic_year=term.academic_year,
+            class_stream=current_class,
+            subject=subject,
+        ).exists()
+
+        if not curriculum_exists:
+            self.add_error(
+                "subject",
+                "This subject is not included in the selected "
+                "class's curriculum for the term's academic year.",
+            )
+
+        duplicate_exists = TeacherAssignment.objects.filter(
+            school=self.school,
+            teacher=teacher,
+            current_class=current_class,
+            subject=subject,
+            term=term,
+        ).exclude(pk=self.instance.pk).exists()
+
+        if duplicate_exists:
+            self.add_error(
+                None,
+                "This teacher already has the same assignment "
+                "for this class, subject, and term.",
+            )
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.school = self.school
+
+        if commit:
+            instance.save()
+
+        return instance

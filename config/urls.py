@@ -346,3 +346,16 @@ urlpatterns.insert(
         name="teacher_management",
     ),
 )
+
+
+# STEP 909 - SCHOOL TEACHER ASSIGNMENT MANAGEMENT
+from tenants.views import teacher_assignment_management
+
+urlpatterns.insert(
+    0,
+    path(
+        "school/teachers/assignments/",
+        teacher_assignment_management,
+        name="teacher_assignment_management",
+    ),
+)
