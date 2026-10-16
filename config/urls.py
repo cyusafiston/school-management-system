@@ -106,6 +106,11 @@ urlpatterns = [
     ),
 
 
+    path("school/teacher/classes/<int:assignment_id>/homework/", views.teacher_homework_view, name="teacher_homework"),
+    path("school/teacher/classes/<int:assignment_id>/homework/<int:homework_id>/edit/", views.teacher_homework_view, name="teacher_homework_edit"),
+    path("school/teacher/classes/<int:assignment_id>/homework/<int:homework_id>/delete/", views.teacher_homework_delete, name="teacher_homework_delete"),
+    path("school/teacher/classes/<int:assignment_id>/homework/<int:homework_id>/download/", views.teacher_homework_download, name="teacher_homework_download"),
+
     # ============================================================
     # PLATFORM ADMINISTRATION
     # ============================================================

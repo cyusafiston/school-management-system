@@ -30,6 +30,7 @@
         <a href="{% url 'teacher_dashboard' %}" class="back-link">&larr; Back to Dashboard</a>
         <div>
             <a href="{% url 'take_attendance' assignment.id %}" class="btn btn-success">Take Attendance</a>
+            <a href="{% url 'input_grades' assignment.pk %}" class="btn btn-success">Input Grades</a>
         </div>
         
         <h1>Students in {{ class_stream.name }}</h1>
@@ -53,8 +54,8 @@
                         <strong>{{ item.student.first_name }} {{ item.student.last_name }}</strong><br>
                         <span style="color: #94a3b8; font-size: 12px;">{{ item.student.registration_number }}</span>
                     </td>
-                    <td><span style="color:#94a3b8;">Coming soon</span></td>
-                    <td><span style="color:#94a3b8;">Coming soon</span></td>
+                    <td>{% if item.grade %}{{ item.grade.cat_marks }} / {{ item.grade.exam_marks }} / {{ item.grade.marks_obtained }}<br><small>{{ item.grade.status }}</small>{% else %}Not graded{% endif %}</td>
+                    <td>{{ item.present }} / {{ item.absent }} / {{ item.late }}</td>
                     <td>
                         <span style="color:#94a3b8;">Academic Profile (Coming soon)</span>
                     </td>

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Manage Homework - {{ assignment.subject.name }}</title>
     <style>
         body {
@@ -113,31 +114,18 @@
     </style>
 </head>
 <body>
+    {% for message in messages %}<p role="status">{{ message }}</p>{% endfor %}
+
     <div class="container">
         <a href="{% url 'teacher_dashboard' %}" class="back-link">&larr; Back to Dashboard</a>
         <h1>Homework for {{ assignment.current_class.name }} - {{ assignment.subject.name }}</h1>
 
         <div class="card" style="margin-top: 20px;">
-            <h2 style="margin-top: 0; font-size: 18px; color: #2c3e50;">Post New Assignment</h2>
+            <h2 style="margin-top: 0; font-size: 18px; color: #2c3e50;">{% if editing %}Edit Homework{% else %}Post New Assignment{% endif %}</h2>
             <form method="POST" enctype="multipart/form-data">
                 {% csrf_token %}
-                <div class="form-group">
-                    <label>Title:</label>
-                    <input type="text" name="title" placeholder="e.g., Chapter 3 Exercises" required>
-                </div>
-                <div class="form-group">
-                    <label>Description & Instructions:</label>
-                    <textarea name="description" placeholder="Write instructions for your students here..." required></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Due Date:</label>
-                    <input type="date" name="due_date" required>
-                </div>
-                <div class="form-group">
-                    <label>Attach PDF or File (Optional):</label>
-                    <input type="file" name="file" accept=".pdf,.doc,.docx,.png,.jpg">
-                </div>
-                <button type="submit">Post Homework</button>
+                {{ form.as_p }}
+                <button type="submit">Save Homework</button>
             </form>
         </div>
 
@@ -149,9 +137,13 @@
                     <div class="hw-date">Due: {{ hw.due_date }}</div>
                     <p style="margin: 10px 0; color: #555;">{{ hw.description }}</p>
                     {% if hw.file %}
-                        <a href="{{ hw.file.url }}" target="_blank" class="file-link">&#128206; Download Attached File</a><br>
+                        <a href="{% url 'teacher_homework_download' assignment.pk hw.pk %}" target="_blank" class="file-link">&#128206; Download Attached File</a><br>
                     {% endif %}
                     <small style="color: #95a5a6;">Posted on: {{ hw.created_at|date:"M d, Y" }}</small>
+                    <a href="{% url 'teacher_homework_edit' assignment.pk hw.pk %}">Edit</a>
+                    <form method="post" action="{% url 'teacher_homework_delete' assignment.pk hw.pk %}" onsubmit="return confirm('Delete this homework?');">
+                        {% csrf_token %}<button type="submit">Delete</button>
+                    </form>
                 </li>
             {% empty %}
                 <p class="empty-text">No homework assigned for this stream yet.</p>

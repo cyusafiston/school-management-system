@@ -27,9 +27,9 @@
 
             <div class="grid grid-cols-2 gap-2 pt-4 border-t border-slate-800">
                 <a href="{% url 'class_students' assignment.id %}" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold py-2 px-3 rounded text-center transition-colors">Students</a>
-                <a href="{% url 'input_grades' assignment.id %}" title="Enter and manage student grades" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2 px-3 rounded text-center transition-colors" style="opacity:0.55;cursor:not-allowed;">Grades (Coming soon)</a>
-                <span title="This module is being secured" class="bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold py-2 px-3 rounded text-center transition-colors" style="opacity:0.55;cursor:not-allowed;">Attendance (Coming soon)</span>
-                <span title="This module is being secured" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold py-2 px-3 rounded text-center transition-colors" style="opacity:0.55;cursor:not-allowed;">Homework (Coming soon)</span>
+                <a href="{% url 'input_grades' assignment.id %}" title="Enter and manage student grades" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2 px-3 rounded text-center transition-colors">Grades</a>
+                <a href="{% url 'take_attendance' assignment.pk %}" class="bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold py-2 px-3 rounded text-center transition-colors">Attendance</a>
+                <a href="{% url 'teacher_homework' assignment.pk %}" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold py-2 px-3 rounded text-center transition-colors">Homework</a>
             </div>
         </div>
         {% empty %}

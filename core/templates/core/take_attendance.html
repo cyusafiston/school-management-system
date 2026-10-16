@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Take Attendance - School Management System</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 30px; }
@@ -27,6 +28,8 @@
     </style>
 </head>
 <body>
+    {% for message in messages %}<p role="status">{{ message }}</p>{% endfor %}
+
     <div class="container">
         <a href="{% url 'class_students' assignment.id %}" class="back-link">&larr; Back to Students</a>
         <h1>Take Attendance</h1>
@@ -35,13 +38,13 @@
         <!-- Date Selector Form -->
         <form method="GET" class="date-box">
             <label for="date" style="font-weight: bold; margin-right: 10px; font-size: 14px;">Select Date:</label>
-            <input type="date" id="date" name="date" value="{{ attendance_date }}" onchange="this.form.submit()">
+            <input type="date" id="date" name="date" value="{{ attendance_date|date:'Y-m-d' }}" onchange="this.form.submit()">
         </form>
 
         <!-- Attendance Submission Form -->
         <form method="POST">
             {% csrf_token %}
-            <input type="hidden" name="attendance_date" value="{{ attendance_date }}">
+            <input type="hidden" name="attendance_date" value="{{ attendance_date|date:'Y-m-d' }}">
             
             <table>
                 <thead>

@@ -77,17 +77,33 @@ def deny_and_redirect(request, message="Access denied."):
 
 
 def teacher_assignment_for_user(request, assignment_id):
-    """Only return an assignment belonging to the logged-in teacher."""
-    if not is_teacher(request.user):
-        return None
-
+    """Resolve an assignment through active school membership and ownership."""
+    from tenants.access import require_school_role, school_queryset
+    context = require_school_context(request.user)
+    require_school_role(context, "teacher")
     return get_object_or_404(
-        TeacherAssignment.objects.select_related(
-            "current_class", "subject", "term", "teacher"
+        school_queryset(TeacherAssignment, context).select_related(
+            "current_class", "subject", "term", "term__academic_year"
         ),
-        id=assignment_id,
-        teacher=request.user,
+        pk=assignment_id, teacher=request.user,
+        current_class__school=context.school, subject__school=context.school,
+        term__school=context.school, term__academic_year__school=context.school,
     )
+
+
+def assignment_students(assignment):
+    """Active term enrollments, independent of a student's latest profile class."""
+    return StudentProfile.objects.filter(
+        school=assignment.school,
+        enrollments__school=assignment.school,
+        enrollments__academic_year=assignment.term.academic_year,
+        enrollments__academic_year__school=assignment.school,
+        enrollments__term=assignment.term,
+        enrollments__term__school=assignment.school,
+        enrollments__class_stream=assignment.current_class,
+        enrollments__class_stream__school=assignment.school,
+        enrollments__status="Active",
+    ).distinct().order_by("id")
 
 
 def teacher_can_access_class(user, class_stream):
@@ -451,6 +467,11 @@ def input_grades_view(request, assignment_id):
             existing = grades_map.get(student.pk)
 
             if existing and existing.status == "Finalized":
+                # Browsers submit readonly inputs too. Unchanged locked rows
+                # must not prevent saving other students' draft marks.
+                if (cat_marks == existing.cat_marks
+                        and exam_marks == existing.exam_marks):
+                    continue
                 errors.append(
                     f"{student}: Finalized grades cannot be edited."
                 )
@@ -487,7 +508,11 @@ def input_grades_view(request, assignment_id):
         else:
             try:
                 with transaction.atomic():
+                    # Use the same row lock as finalization. A grade that
+                    # was finalized after the form loaded must stay locked.
                     for grade in pending:
+                        if grade.pk:
+                            school_queryset(Grade, context).select_for_update().get(pk=grade.pk)
                         grade.save()
             except ValidationError as exc:
                 messages.error(
@@ -560,13 +585,36 @@ def class_students_view(request, assignment_id):
         .order_by("student__id")
     )
 
+    from django.db.models import Count
+
+    enrollments = list(enrollments)
+    student_ids = [enrollment.student_id for enrollment in enrollments]
+    grades = {
+        grade.student_id: grade
+        for grade in school_queryset(Grade, context).filter(
+            student_id__in=student_ids,
+            student__school=context.school,
+            subject=assignment.subject,
+            term=assignment.term,
+        )
+    }
+    attendance_counts = {}
+    for row in (
+        school_queryset(Attendance, context)
+        .filter(assignment=assignment, student_id__in=student_ids,
+                student__school=context.school)
+        .values("student_id", "status")
+        .annotate(total=Count("pk"))
+    ):
+        attendance_counts[(row["student_id"], row["status"])] = row["total"]
+
     student_data = [
         {
             "student": enrollment.student,
-            "grade": None,
-            "present": 0,
-            "absent": 0,
-            "late": 0,
+            "grade": grades.get(enrollment.student_id),
+            "present": attendance_counts.get((enrollment.student_id, "Present"), 0),
+            "absent": attendance_counts.get((enrollment.student_id, "Absent"), 0),
+            "late": attendance_counts.get((enrollment.student_id, "Late"), 0),
         }
         for enrollment in enrollments
     ]
@@ -607,11 +655,7 @@ def take_attendance_view(request, assignment_id):
         term__academic_year__school=context.school,
     )
 
-    students = school_queryset(
-        StudentProfile, context
-    ).filter(
-        current_class=assignment.current_class,
-    ).order_by("id")
+    students = assignment_students(assignment)
 
     raw_date = (
         request.POST.get("attendance_date")
@@ -656,6 +700,7 @@ def take_attendance_view(request, assignment_id):
 
         try:
             with transaction.atomic():
+                TeacherAssignment.objects.select_for_update().get(pk=assignment.pk)
                 for student in student_list:
                     Attendance.objects.update_or_create(
                         school=context.school,
@@ -995,6 +1040,7 @@ def take_daily_attendance(request, class_id=None):
         current_class__school=context.school,
         subject__school=context.school,
         term__school=context.school,
+        term__is_current=True,
         term__academic_year__school=context.school,
     )
 
@@ -1020,11 +1066,8 @@ def take_daily_attendance(request, class_id=None):
             pk=class_id,
         )
 
-        students = list(
-            school_queryset(StudentProfile, context)
-            .filter(current_class=selected_class)
-            .order_by("id")
-        )
+        assignment = assignments.filter(current_class=selected_class).select_related("term__academic_year").first()
+        students = list(assignment_students(assignment))
 
         today_records = school_queryset(
             DailyClassAttendance, context
@@ -1032,7 +1075,6 @@ def take_daily_attendance(request, class_id=None):
             current_class=selected_class,
             date=current_date,
             student__school=context.school,
-            student__current_class=selected_class,
         )
 
         attendance_by_student = {
@@ -1081,6 +1123,12 @@ def take_daily_attendance(request, class_id=None):
                 else:
                     try:
                         with transaction.atomic():
+                            # Serialize roll calls even when no attendance rows exist yet.
+                            school_queryset(ClassStream, context).select_for_update().get(pk=selected_class.pk)
+                            if school_queryset(DailyClassAttendance, context).filter(
+                                current_class=selected_class, date=current_date,
+                            ).exists():
+                                raise ValidationError("Attendance is already locked for today.")
                             for student in students:
                                 record = DailyClassAttendance(
                                     school=context.school,
@@ -1109,6 +1157,10 @@ def take_daily_attendance(request, class_id=None):
                             class_id=selected_class.pk,
                         )
 
+    if request.method == "POST" and selected_class is None:
+        from django.http import HttpResponseBadRequest
+        return HttpResponseBadRequest("Select an assigned class first.")
+
     return render(
         request,
         "core/take_daily_attendance.html",
@@ -1125,40 +1177,57 @@ def take_daily_attendance(request, class_id=None):
 
 
 @login_required
-def teacher_homework_view(request, assignment_id):
-    if not is_teacher(request.user):
-        return deny_and_redirect(request, "Access denied. Teachers only.")
-
+def teacher_homework_view(request, assignment_id, homework_id=None):
+    from core.teacher_forms import HomeworkForm
     assignment = teacher_assignment_for_user(request, assignment_id)
-    if assignment is None:
-        return deny_and_redirect(
-            request,
-            "Access denied. This assignment does not belong to you.",
+    homework = None
+    if homework_id is not None:
+        homework = get_object_or_404(
+            Homework, pk=homework_id, school=assignment.school, assignment=assignment,
         )
-    homeworks = assignment.homeworks.all().order_by('-created_at')
-    
-    if request.method == 'POST':
-        title = request.POST.get('title')
-        description = request.POST.get('description')
-        due_date = request.POST.get('due_date')
-        file = request.FILES.get('file')
-        
-        if title and description and due_date:
-            Homework.objects.create(
-                assignment=assignment,
-                title=title,
-                description=description,
-                due_date=due_date,
-                file=file
-            )
-            messages.success(request, "Homework posted successfully!")
-            return redirect('teacher_homework', assignment_id=assignment.id)
-            
-    context = {
-        'assignment': assignment,
-        'homeworks': homeworks,
-    }
-    return render(request, 'core/teacher_homework.html', context)
+    if homework is None:
+        homework = Homework(school=assignment.school, assignment=assignment)
+    editing = homework if homework.pk else None
+    form = HomeworkForm(request.POST if request.method == "POST" else None, request.FILES or None, instance=homework)
+    if request.method == "POST" and form.is_valid():
+        record = form.save(commit=False)
+        record.school = assignment.school
+        record.assignment = assignment
+        record.save()
+        messages.success(request, "Homework saved successfully.")
+        return redirect("teacher_homework", assignment_id=assignment.pk)
+    return render(request, "core/teacher_homework.html", {
+        "assignment": assignment, "form": form, "editing": editing,
+        "homeworks": Homework.objects.filter(school=assignment.school, assignment=assignment).order_by("-created_at"),
+    })
+
+
+@login_required
+@require_POST
+def teacher_homework_delete(request, assignment_id, homework_id):
+    assignment = teacher_assignment_for_user(request, assignment_id)
+    homework = get_object_or_404(Homework, pk=homework_id, school=assignment.school, assignment=assignment)
+    homework.delete()
+    messages.success(request, "Homework deleted.")
+    return redirect("teacher_homework", assignment_id=assignment.pk)
+
+
+@login_required
+def teacher_homework_download(request, assignment_id, homework_id):
+    from django.http import FileResponse
+    from pathlib import Path
+    assignment = teacher_assignment_for_user(request, assignment_id)
+    homework = get_object_or_404(Homework, pk=homework_id, school=assignment.school, assignment=assignment)
+    if not homework.file:
+        raise Http404("No attachment.")
+    try:
+        response = FileResponse(homework.file.open("rb"), as_attachment=True,
+                                filename=Path(homework.file.name).name)
+    except FileNotFoundError:
+        raise Http404("Attachment is unavailable.")
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @login_required
@@ -1861,39 +1930,7 @@ def teacher_enter_grades_view(request, assignment_id):
 
 @login_required
 def teacher_homework_manage_view(request, assignment_id):
-    if not is_teacher(request.user):
-        messages.error(request, "Access denied.")
-        return redirect('/login/')
-
-    assignment = teacher_assignment_for_user(request, assignment_id)
-    if assignment is None:
-        return deny_and_redirect(
-            request,
-            "Access denied. This assignment does not belong to you.",
-        )
-    homeworks = Homework.objects.filter(assignment=assignment)
-
-    if request.method == 'POST':
-        title = request.POST.get('title')
-        description = request.POST.get('description')
-        due_date = request.POST.get('due_date')
-        file = request.FILES.get('file') # Capture uploaded file
-        
-        Homework.objects.create(
-            assignment=assignment,
-            title=title,
-            description=description,
-            due_date=due_date,
-            file=file # Save file to model
-        )
-        messages.success(request, "Homework assigned successfully with attachment.")
-        return redirect('teacher_homework_manage', assignment_id=assignment.id)
-
-    context = {
-        'assignment': assignment,
-        'homeworks': homeworks,
-    }
-    return render(request, 'core/teacher_homework_manage.html', context)
+    return teacher_homework_view(request, assignment_id)
 
 
 class StudentPasswordChangeView(PasswordChangeView):

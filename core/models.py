@@ -896,6 +896,21 @@ class Homework(models.Model):
     file = models.FileField(upload_to='homework_files/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def clean(self):
+        super().clean()
+        if not self.school_id:
+            raise ValidationError({"school": "A school is required."})
+        if self.assignment_id and not TeacherAssignment.objects.filter(
+            pk=self.assignment_id, school_id=self.school_id,
+            current_class__school_id=self.school_id, subject__school_id=self.school_id,
+            term__school_id=self.school_id, term__academic_year__school_id=self.school_id,
+        ).exists():
+            raise ValidationError({"assignment": "Assignment must belong to this school."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.title} - {self.assignment.subject.name}"
 
