@@ -554,29 +554,55 @@ class Subject(models.Model):
         blank=True,
         related_name="subject_records",
     )
-    name = models.CharField(max_length=100, unique=True)
+
+    name = models.CharField(max_length=100)
     code = models.CharField(max_length=20, unique=True, blank=True)
+
     description = models.TextField(blank=True, null=True)
 
-    max_cat_marks = models.DecimalField(max_digits=5, decimal_places=2, default=50.00, help_text="Maximum possible marks for CAT")
-    max_exam_marks = models.DecimalField(max_digits=5, decimal_places=2, default=50.00, help_text="Maximum possible marks for Exam")
+    max_cat_marks = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=50.00,
+        help_text="Maximum possible marks for CAT",
+    )
+
+    max_exam_marks = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=50.00,
+        help_text="Maximum possible marks for Exam",
+    )
 
     class Meta:
-        ordering = ['id']
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "name"],
+                name="unique_subject_name_per_school",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.school_id is None:
+            raise ValidationError({
+                "school": "A subject must belong to a school."
+            })
 
     def save(self, *args, **kwargs):
-        if not self.code or not self.code.startswith("SUB/"):
-            count = Subject.objects.count() + 1
-            self.code = f"SUB/{count:02d}"
+        import uuid
 
-        super().save(*args, **kwargs)
+        if not self.code:
+            self.code = f"SUB/{uuid.uuid4().hex[:12].upper()}"
+
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} ({self.code})"
 
-from decimal import Decimal
-from django.db import models
-from django.core.exceptions import ValidationError
 
 class Grade(models.Model):
     school = models.ForeignKey(
