@@ -1,4 +1,4 @@
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 from django.core.exceptions import PermissionDenied
 from tenants.access import require_school_context
 from decimal import Decimal, InvalidOperation
@@ -125,8 +125,6 @@ def custom_login_view(request):
             user = form.get_user()
             login(request, user)
             return redirect_based_on_role(request)
-        else:
-            print("LOGIN FORM ERRORS:", form.errors)
     else:
         form = AuthenticationForm()
 
@@ -149,7 +147,7 @@ def redirect_based_on_role(request):
 
     # School users must belong to exactly one approved school.
     try:
-        require_school_context(user)
+        context = require_school_context(user)
     except (PermissionDenied, Http404):
         logout(request)
         messages.error(
@@ -159,7 +157,8 @@ def redirect_based_on_role(request):
         )
         return redirect("login")
 
-    # Do not send users to the old, unscoped dashboards.
+    if context.role == "student":
+        return redirect("student_dashboard")
     return redirect("school_home")
 
 
@@ -1231,249 +1230,134 @@ def teacher_homework_download(request, assignment_id, homework_id):
 
 
 @login_required
+@require_GET
 def student_dashboard(request):
-    student_profile = get_object_or_404(StudentProfile, user=request.user)
-    
-    class_stream = student_profile.current_class
-    
-    # --- Homework Logic ---
-    homeworks = Homework.objects.all().order_by('-created_at')
-    if class_stream:
-        try:
-            homeworks = Homework.objects.filter(assignment__class_stream=class_stream).order_by('-created_at')
-        except Exception:
-            try:
-                homeworks = Homework.objects.filter(class_stream=class_stream).order_by('-created_at')
-            except Exception:
-                try:
-                    homeworks = Homework.objects.filter(assignment__teacher_assignment__student_class=class_stream).order_by('-created_at')
-                except Exception:
-                    pass
-
-    homework_count = homeworks.count()
-    recent_homeworks = homeworks[:5]
-
-    # --- Notices Logic ---
-    today = timezone.now().date()
-    if class_stream:
-        notices = Notice.objects.filter(
-            Q(expires_at__gte=today) | Q(expires_at__isnull=True)
-        ).filter(
-            Q(target_class__isnull=True) | Q(target_class=class_stream)
-        )
-    else:
-        notices = Notice.objects.filter(
-            Q(expires_at__gte=today) | Q(expires_at__isnull=True),
-            target_class__isnull=True
-        )
-        
-    notice_count = notices.count()
-    recent_notices = notices.order_by('-created_at')[:3]
-
-    # --- Attendance Logic ---
-    attendance_records = Attendance.objects.filter(student=student_profile)
-    total_classes = attendance_records.count()
-    present_count = attendance_records.filter(status='Present').count()
-    late_count = attendance_records.filter(status='Late').count()
-
-    attendance_percentage = 0
-    if total_classes > 0:
-        attendance_percentage = round(((present_count + late_count) / total_classes) * 100, 1)
-
-    if total_classes == 0:
-        attendance_status = "No Records"
-        status_color = "text-gray-600"
-        bg_color = "bg-gray-50 text-gray-600"
-        icon_class = "fa-info-circle"
-    elif attendance_percentage >= 85:
-        attendance_status = "Normal"
-        status_color = "text-green-600"
-        bg_color = "bg-green-50 text-green-600"
-        icon_class = "fa-check-circle"
-    elif attendance_percentage >= 70:
-        attendance_status = "Warning"
-        status_color = "text-yellow-600"
-        bg_color = "bg-yellow-50 text-yellow-600"
-        icon_class = "fa-exclamation-triangle"
-    else:
-        attendance_status = "Critical"
-        status_color = "text-red-600"
-        bg_color = "bg-red-50 text-red-600"
-        icon_class = "fa-times-circle"
-
-    # --- Academic Grades Logic (Added for Report Card Integration) ---
-    term_param = request.GET.get('term', '1')
-    grades_qs = Grade.objects.filter(student=student_profile)
-    
-    target_term_names = ['Term 1']
-    if term_param == '2':
-        target_term_names = ['Term 1', 'Term 2']
-    elif term_param == '3':
-        target_term_names = ['Term 1', 'Term 2', 'Term 3']
-        
-    filtered_grades = grades_qs.filter(term__name__in=target_term_names)
-
-    subject_summary = {}
-    for g in filtered_grades:
-        subj_name = g.subject.name
-        term_num = 1
-        if g.term and 'Term 2' in str(g.term.name): term_num = 2
-        elif g.term and 'Term 3' in str(g.term.name): term_num = 3
-
-        max_cat = getattr(g.subject, 'max_cat_marks', Decimal('50.00')) or Decimal('50.00')
-        max_exam = getattr(g.subject, 'max_exam_marks', Decimal('50.00')) or Decimal('50.00')
-        max_total = max_cat + max_exam
-
-        if subj_name not in subject_summary:
-            subject_summary[subj_name] = {'subject': g.subject, 'terms': {}}
-            
-        subject_summary[subj_name]['terms'][term_num] = {
-            'cat_marks': g.cat_marks,
-            'max_cat': max_cat,
-            'exam_marks': g.exam_marks,
-            'max_exam': max_exam,
-            'marks_obtained': g.marks_obtained,
-            'max_marks': max_total,
-            'percentage': g.percentage,
-        }
-
-    table_rows = []
-    total_percentage_sum = Decimal('0.00')
-    count_subjects = 0
-
-    for subj_name, data in subject_summary.items():
-        term_percentages = [t_data['percentage'] for t_data in data['terms'].values() if t_data['percentage'] is not None]
-        final_pct = sum(term_percentages, Decimal('0.00')) / len(term_percentages) if term_percentages else Decimal('0.00')
-        
-        total_percentage_sum += final_pct
-        count_subjects += 1
-        
-        grade_ltr = 'F'
-        rem = 'Fail'
-        if final_pct >= 80: grade_ltr, rem = 'A', 'Excellent'
-        elif final_pct >= 70: grade_ltr, rem = 'B', 'Very Good'
-        elif final_pct >= 60: grade_ltr, rem = 'C', 'Good'
-        elif final_pct >= 50: grade_ltr, rem = 'D', 'Satisfactory'
-
-        table_rows.append({
-            'subject_name': subj_name,
-            'terms': data['terms'],
-            'final_percentage': round(final_pct, 1),
-            'grade_letter': grade_ltr,
-            'remarks': rem
-        })
-
-    average_percentage = round(total_percentage_sum / count_subjects if count_subjects > 0 else Decimal('0.00'), 1)
-
-    context = {
-        'student_profile': student_profile,
-        'class_stream': class_stream,
-        'homework_count': homework_count,
-        'recent_homeworks': recent_homeworks,
-        'notice_count': notice_count,
-        'recent_notices': recent_notices,
-        'attendance_status': attendance_status,
-        'attendance_percentage': attendance_percentage,
-        'status_color': status_color,
-        'bg_color': bg_color,
-        'icon_class': icon_class,
-        'table_rows': table_rows,
-        'average_percentage': average_percentage,
-        'term_param': term_param,
-    }
-    return render(request, 'core/student_dashboard.html', context)
+    from core import student_portal as portal
+    context = portal.student_context(request, selected=False)
+    subject_attendance, daily = portal.personal_attendance(context)
+    data = portal.page_context(context)
+    data.update(grades_list=portal.grades(context), subjects=portal.curriculum(context),
+                recent_homeworks=portal.homework(context)[:5], recent_notices=portal.notices(context)[:5],
+                homework_count=portal.homework(context).count(), subject_count=portal.curriculum(context).count(),
+                attendance_count=subject_attendance.count(), daily_count=daily.count())
+    return render(request, "core/student_dashboard.html", data)
 
 
 @login_required
+@require_GET
+def student_subjects(request):
+    from core import student_portal as portal
+    context = portal.student_context(request)
+    data = portal.page_context(context)
+    data.update(subjects=portal.curriculum(context), assignments=portal.assignments(context))
+    return render(request, "core/student_subjects.html", data)
+
+
+@login_required
+@require_GET
 def student_homework_view(request):
-    if not is_student(request.user):
-        messages.error(request, "Access denied. Student portal only.")
-        return redirect('/login/')
-
-    student_profile = get_object_or_404(StudentProfile, user=request.user)
-    class_stream = student_profile.current_class
-    
-    homework_list = Homework.objects.filter(assignment__current_class=class_stream).order_by('-created_at')
-    homework_count = homework_list.count()
-    
-    context = {
-        'student_profile': student_profile,
-        'homework_list': homework_list,
-        'homework_count': homework_count,
-    }
-    return render(request, 'core/student_homework.html', context)
+    from core import student_portal as portal
+    context = portal.student_context(request)
+    data = portal.page_context(context)
+    data.update(homework_list=portal.homework(context))
+    return render(request, "core/student_homework.html", data)
 
 
 @login_required
-def student_grades(request):
-    if not is_student(request.user):
-        messages.error(request, "Access denied. Student portal only.")
-        return redirect('/login/')
-        
-    student_profile = get_object_or_404(StudentProfile, user=request.user)
-    
-    grades_list = Grade.objects.filter(student=student_profile, status='Finalized').select_related('subject', 'term')
-    
-    context = {
-        'student_profile': student_profile,
-        'grades_list': grades_list,
-    }
-    return render(request, 'core/student_grades.html', context)
-
-
-@login_required
-def student_attendance_view(request):
-    student_profile = get_object_or_404(StudentProfile, user=request.user)
-    
+@require_GET
+def student_homework_download(request, homework_id):
+    from core import student_portal as portal
+    from django.http import FileResponse
+    from pathlib import Path
+    context = portal.student_context(request)
+    record = get_object_or_404(portal.homework(context), pk=homework_id)
+    if not record.file:
+        raise Http404("No attachment.")
     try:
-        year = int(request.GET.get('year', datetime.now().year))
-        month = int(request.GET.get('month', datetime.now().month))
-    except ValueError:
-        year = datetime.now().year
-        month = datetime.now().month
+        response = FileResponse(record.file.open("rb"), as_attachment=True,
+                                filename=Path(record.file.name).name)
+    except FileNotFoundError:
+        raise Http404("Attachment is unavailable.")
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
+    return response
 
-    subject_attendance = Attendance.objects.filter(student=student_profile).order_by('-date')
-    sub_total = subject_attendance.count()
-    sub_present = subject_attendance.filter(status='Present').count()
-    sub_late = subject_attendance.filter(status='Late').count()
-    sub_absent = subject_attendance.filter(status='Absent').count()
-    sub_percentage = round(((sub_present + sub_late) / sub_total) * 100, 1) if sub_total > 0 else 0
 
-    daily_attendance = DailyClassAttendance.objects.filter(student=student_profile).order_by('-date')
-    daily_total = daily_attendance.count()
-    daily_present = daily_attendance.filter(status='Present').count()
-    daily_late = daily_attendance.filter(status='Late').count()
-    daily_absent = daily_attendance.filter(status='Absent').count()
-    daily_percentage = round(((daily_present + daily_late) / daily_total) * 100, 1) if daily_total > 0 else 0
+@login_required
+@require_GET
+def student_grades(request):
+    from core import student_portal as portal
+    context = portal.student_context(request)
+    data = portal.page_context(context)
+    data.update(grades_list=portal.grades(context))
+    return render(request, "core/student_grades.html", data)
 
-    cal = calendar.Calendar(firstweekday=0)
-    month_days = cal.monthdayscalendar(year, month)
-    
-    monthly_daily_records = daily_attendance.filter(date__year=year, date__month=month)
-    attendance_map = {record.date.day: record.status for record in monthly_daily_records}
 
-    prev_month = month - 1 if month > 1 else 12
-    prev_year = year if month > 1 else year - 1
-    next_month = month + 1 if month < 12 else 1
-    next_year = year if month < 12 else year + 1
+@login_required
+@require_GET
+def student_attendance_view(request):
+    from core import student_portal as portal
+    context = portal.student_context(request)
+    subject, daily = portal.personal_attendance(context)
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get("year", today.year))
+        month = int(request.GET.get("month", today.month))
+        if not 1 <= year <= 9999 or not 1 <= month <= 12:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise Http404("Invalid attendance month.")
+    data = portal.page_context(context)
+    data.update(subject_attendance=subject.filter(date__year=year, date__month=month),
+                daily_attendance=daily.filter(date__year=year, date__month=month),
+                current_year=year, current_month=month)
+    return render(request, "core/student_attendance.html", data)
 
-    month_name = calendar.month_name[month]
 
-    context = {
-        'student_profile': student_profile,
-        'subject_attendance': subject_attendance,
-        'sub_total': sub_total, 'sub_present': sub_present, 'sub_late': sub_late, 'sub_absent': sub_absent, 'sub_percentage': sub_percentage,
-        'daily_attendance': daily_attendance,
-        'daily_total': daily_total, 'daily_present': daily_present, 'daily_late': daily_late, 'daily_absent': daily_absent, 'daily_percentage': daily_percentage,
-        'month_days': month_days,
-        'attendance_map': attendance_map,
-        'current_year': year,
-        'current_month': month,
-        'month_name': month_name,
-        'prev_month': prev_month, 'prev_year': prev_year,
-        'next_month': next_month, 'next_year': next_year,
-    }
-    return render(request, 'core/student_attendance.html', context)
+@login_required
+@require_GET
+def student_notices(request):
+    from core import student_portal as portal
+    context = portal.student_context(request, selected=False)
+    data = portal.page_context(context)
+    data.update(notices=portal.notices(context))
+    return render(request, "core/student_notices.html", data)
+
+
+@login_required
+@require_GET
+def student_schedule(request):
+    # The existing schema has subject allocations, but no day/time/room fields.
+    from core import student_portal as portal
+    context = portal.student_context(request)
+    data = portal.page_context(context)
+    data.update(assignments=portal.assignments(context))
+    return render(request, "core/student_schedule.html", data)
+
+
+@login_required
+@require_GET
+def student_profile_view(request):
+    from core import student_portal as portal
+    context = portal.student_context(request, selected=False)
+    return render(request, "core/student_profile.html", portal.page_context(context))
+
+
+@login_required
+def student_password_change(request):
+    from core import student_portal as portal
+    from django.contrib.auth.forms import PasswordChangeForm
+    from django.contrib.auth import update_session_auth_hash
+    context = portal.student_context(request, selected=False)
+    form = PasswordChangeForm(request.user, request.POST if request.method == "POST" else None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        update_session_auth_hash(request, user)
+        messages.success(request, "Your password has been changed.")
+        return redirect("student_dashboard")
+    data = portal.page_context(context)
+    data["form"] = form
+    return render(request, "core/student_change_password.html", data)
 
 
 from django.template.loader import get_template
@@ -1506,8 +1390,11 @@ def get_student_report_data(student, school, academic_year_id, term_id):
         StudentEnrollment.objects.select_related("class_stream"),
         school=school,
         student=student,
+        student__school=school,
+        class_stream__school=school,
         academic_year=academic_year,
         term=term,
+        status__in=["Active", "Completed"],
     )
 
     grades = (
@@ -1527,6 +1414,9 @@ def get_student_report_data(student, school, academic_year_id, term_id):
         student=student,
         assignment__school=school,
         assignment__term=term,
+        assignment__current_class=enrollment.class_stream,
+        assignment__current_class__school=school,
+        assignment__subject__school=school,
     )
 
     return {
@@ -1539,25 +1429,21 @@ def get_student_report_data(student, school, academic_year_id, term_id):
     }
 
 
-@login_required
-def generate_student_report_card(request):
+def student_report_context(request):
+    """Reuse the existing curriculum/completeness and cumulative report rules."""
+    from core import student_portal as portal
     from core.models import AcademicYear, Term, StudentEnrollment, Grade, Attendance, ClassSubject
     from decimal import Decimal, ROUND_HALF_UP
     from django.http import Http404
     from django.utils import timezone
-    from tenants.access import require_school_context, require_school_role
 
-    school_context = require_school_context(request.user)
-    require_school_role(school_context, "student")
-    school = school_context.school
+    resolved = portal.student_context(request, selected=False)
+    school = resolved.school
+    student = resolved.student
+    if "term_id" in request.GET:
+        raise Http404("Use the reporting term selector.")
 
-    student = get_object_or_404(
-        StudentProfile,
-        user=request.user,
-        school=school,
-    )
-
-    term_param = request.GET.get("term", "1")
+    term_param = request.GET.get("term", resolved.term.name[-1])
     scope = request.GET.get("scope", "term")
 
     if term_param not in ("1", "2", "3"):
@@ -1582,17 +1468,9 @@ def generate_student_report_card(request):
         current_term_label = "Term 1"
         report_scope = "term"
 
-    academic_year = (
-        AcademicYear.objects.filter(
-            school=school,
-            is_current=True,
-        )
-        .order_by("-pk")
-        .first()
-    )
-
-    if academic_year is None:
-        raise Http404("No current academic year configured.")
+    academic_year = resolved.enrollment.academic_year
+    if request.GET.get("academic_year", str(academic_year.pk)) != str(academic_year.pk):
+        raise Http404("Reporting year not found.")
 
     selected_terms = list(
         Term.objects.filter(
@@ -1786,15 +1664,9 @@ def generate_student_report_card(request):
         average_percentage = None
         avg_grade_letter = "?"
 
-    attendance_records = Attendance.objects.filter(
-        school=school,
-        student=student,
-        assignment__school=school,
-        assignment__term_id__in=[
-            term_by_number[number].pk
-            for number in term_numbers
-        ],
-    )
+    from functools import reduce
+    from operator import or_
+    attendance_records = reduce(or_, attendance_querysets)
 
     total_records = attendance_records.count()
     present_count = attendance_records.filter(
@@ -1841,13 +1713,23 @@ def generate_student_report_card(request):
         "attendance_unit": "class attendance records",
     }
 
+    return context
+
+
+@login_required
+@require_GET
+def generate_student_report_card(request):
+    context = student_report_context(request)
+    student = context["student_profile"]
+    academic_year = context["academic_year"]
+    term_param = context["term_param"]
     template = get_template("core/report_card_pdf.html")
     html = template.render(context)
 
     response = HttpResponse(content_type="application/pdf")
     response["Content-Disposition"] = (
         f'attachment; filename="Report_Card_{student.pk}_'
-        f'{academic_year.name}_Term{term_param}.pdf"'
+        f'{academic_year.pk}_Term{term_param}.pdf"'
     )
 
     pisa_status = pisa.CreatePDF(html, dest=response)
@@ -1858,6 +1740,7 @@ def generate_student_report_card(request):
             status=400,
         )
 
+    response["Cache-Control"] = "private, no-store"
     return response
 
 @login_required

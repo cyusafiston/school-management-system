@@ -290,6 +290,8 @@
                 Teacher Dashboard
             </a>
 
+        {% elif school_role == "student" %}
+            <a class="nav-link" href="{% url 'student_dashboard' %}">Student Dashboard</a>
         {% endif %}
 
         <div class="nav-label" style="margin-top: 35px;">

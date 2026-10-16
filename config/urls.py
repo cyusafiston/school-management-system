@@ -52,6 +52,17 @@ urlpatterns = [
     ),
 
 
+    path("school/student/", views.student_dashboard, name="student_dashboard"),
+    path("school/student/profile/", views.student_profile_view, name="student_profile"),
+    path("school/student/password/", views.student_password_change, name="change_password"),
+    path("school/student/subjects/", views.student_subjects, name="student_subjects"),
+    path("school/student/grades/", views.student_grades, name="student_grades"),
+    path("school/student/attendance/", views.student_attendance_view, name="student_attendance"),
+    path("school/student/homework/", views.student_homework_view, name="student_homework"),
+    path("school/student/homework/<int:homework_id>/download/", views.student_homework_download, name="student_homework_download"),
+    path("school/student/notices/", views.student_notices, name="student_notices"),
+    path("school/student/schedule/", views.student_schedule, name="student_schedule"),
+
     # SECURED SCHOOL TEACHER DASHBOARD
     path(
         "school/teacher/dashboard/",
