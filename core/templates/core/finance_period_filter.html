@@ -1,0 +1,1 @@
+<form method="get" class="my-4"><label>Reporting term <select name="term">{% for option in terms %}<option value="{{ option.pk }}" {% if option.pk == current_term.pk %}selected{% endif %}>{{ option.academic_year }} — {{ option.name }}</option>{% endfor %}</select></label><button type="submit">View term</button></form>

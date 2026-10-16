@@ -1961,23 +1961,9 @@ def accountant_dashboard(request):
 
     # 4. Resolve the current academic year and term
     #    within this school only.
-    current_year = (
-        school_queryset(AcademicYear, school_context)
-        .filter(is_current=True)
-        .first()
-    )
-
-    current_term = None
-
-    if current_year is not None:
-        current_term = (
-            school_queryset(Term, school_context)
-            .filter(
-                academic_year=current_year,
-                is_current=True,
-            )
-            .first()
-        )
+    from .finance import period
+    current_term = period(request, school)
+    current_year = current_term.academic_year if current_term else None
 
     # 5. Initialize safe empty-state financial values.
     total_expected = zero
@@ -2068,6 +2054,7 @@ def accountant_dashboard(request):
                 student_id, zero
             ) or zero
 
+            expected, paid = money(expected), money(paid)
             difference = expected - paid
 
             if difference > zero:
@@ -2101,16 +2088,18 @@ def accountant_dashboard(request):
     # 12. Preserve the template's existing context keys.
     context = {
         "school": school,
-        "total_expected": total_expected,
-        "total_collected": total_collected,
-        "outstanding_balance": outstanding_balance,
+        "total_expected": money(total_expected),
+        "total_collected": money(total_collected),
+        "outstanding_balance": money(outstanding_balance),
         "total_overpaid": total_overpaid,
-        "today_collections": today_collections,
+        "today_collections": money(today_collections),
         "today_transactions": today_transactions,
         "total_students": total_students,
+        "can_configure_fees": school_context.role == "administrator",
         "current_term": current_term,
         "recent_payments": recent_payments,
         "finance_ready": finance_ready,
+        "terms": Term.objects.filter(school=school, academic_year__school=school),
         "finance_message": finance_message,
     }
 
@@ -2126,6 +2115,11 @@ from django.shortcuts import redirect
 
 
 class PaymentForm(forms.ModelForm):
+    submission_token = forms.CharField(widget=forms.HiddenInput)
+
+    def clean_reference_number(self):
+        return (self.cleaned_data.get("reference_number") or "").strip() or None
+
     class Meta:
         model = Payment
         fields = [
@@ -2206,6 +2200,10 @@ class PaymentForm(forms.ModelForm):
         from django.db.models import Sum
         from core.models import StudentFee, Payment
 
+        if (cleaned_data.get("payment_method") != "Cash"
+                and not cleaned_data.get("reference_number")):
+            self.add_error("reference_number", "A transaction reference is required for non-cash payments.")
+
         student = cleaned_data.get("student")
         academic_year = cleaned_data.get("academic_year")
         term = cleaned_data.get("term")
@@ -2257,7 +2255,7 @@ class PaymentForm(forms.ModelForm):
             or Decimal("0.00")
         )
 
-        balance = bill.total_expected - total_paid
+        balance = bill.total_expected - money(total_paid)
 
         if amount is not None and amount <= 0:
             self.add_error(
@@ -2278,121 +2276,9 @@ from django.db import transaction
 
 @login_required
 def record_payment(request):
-    """
-    Record a payment for the authenticated user's school only.
-    """
-    from django.contrib import messages
-    from django.db import transaction
-    from django.shortcuts import render, redirect
+    from .finance import record_payment as secured_record_payment
+    return secured_record_payment(request)
 
-    from tenants.access import (
-        require_school_context,
-        require_school_role,
-    )
-
-    # Resolve the approved school from the user's membership.
-    school_context = require_school_context(request.user)
-
-    # Only administrators and accountants can record payments.
-    require_school_role(
-        school_context,
-        "administrator",
-        "accountant",
-    )
-
-    if request.method == "POST":
-        form = PaymentForm(
-            request.POST,
-            school_context=school_context,
-        )
-
-        if form.is_valid():
-            try:
-                with transaction.atomic():
-                    from decimal import Decimal
-                    from django.db.models import Sum
-                    from django.core.exceptions import ValidationError
-                    from core.models import StudentFee, Payment
-
-                    payment = form.save(commit=False)
-
-                    # Never trust a school ID from POST data.
-                    payment.school = school_context.school
-                    payment.received_by = request.user
-
-                    # Lock the specific student's bill until commit.
-                    bill = (
-                        StudentFee.objects.select_for_update()
-                        .get(
-                            school=school_context.school,
-                            student=payment.student,
-                            academic_year=payment.academic_year,
-                            term=payment.term,
-                        )
-                    )
-
-                    # Recalculate while holding the bill lock.
-                    already_paid = (
-                        Payment.objects.filter(
-                            school=school_context.school,
-                            student=payment.student,
-                            academic_year=payment.academic_year,
-                            term=payment.term,
-                            is_voided=False,
-                        )
-                        .aggregate(total=Sum("amount_paid"))["total"]
-                        or Decimal("0.00")
-                    )
-
-                    remaining = bill.total_expected - already_paid
-
-                    if (
-                        payment.amount_paid <= 0
-                        or payment.amount_paid > remaining
-                    ):
-                        raise ValidationError(
-                            "Payment exceeds the available balance "
-                            "or has an invalid amount."
-                        )
-
-                    # Save only after the locked balance check.
-                    payment.save()
-
-                messages.success(
-                    request,
-                    (
-                        f"Successfully recorded payment of "
-                        f"{payment.amount_paid} RWF for "
-                        f"{payment.student}."
-                    ),
-                )
-
-                return redirect(
-                    "payment_receipt",
-                    payment_id=payment.pk,
-                )
-
-            except Exception:
-                # Do not expose internal database errors to users.
-                messages.error(
-                    request,
-                    "Unable to record this payment. "
-                    "Please verify the details and try again.",
-                )
-
-    else:
-        form = PaymentForm(
-            school_context=school_context,
-        )
-
-    return render(
-        request,
-        "core/record_payment.html",
-        {
-            "form": form,
-            "school": school_context.school,
-        },
-    )
 
 from decimal import Decimal
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -2437,117 +2323,35 @@ def debtors_list(request):
     school = school_context.school
     zero = Decimal("0.00")
 
-    current_year = (
-        school_queryset(AcademicYear, school_context)
-        .filter(is_current=True)
-        .first()
-    )
+    from .finance import period
+    current_term = period(request, school)
+    current_year = current_term.academic_year if current_term else None
 
-    current_term = None
-
-    if current_year is not None:
-        current_term = (
-            school_queryset(Term, school_context)
-            .filter(
-                academic_year=current_year,
-                is_current=True,
-            )
-            .first()
-        )
-
+    from .finance import records
     debtors_data = []
-
-    if current_term is not None:
-        enrollments = (
-            school_queryset(StudentEnrollment, school_context)
-            .filter(
-                academic_year=current_year,
-                term=current_term,
-                student__school=school,
-                class_stream__school=school,
-                academic_year__school=school,
-                term__school=school,
-            )
-            .select_related(
-                "student",
-                "class_stream",
-                "academic_year",
-                "term",
-            )
-            .order_by("student_id", "-date_enrolled", "-pk")
-        )
-
-        # Use one enrollment per student for the current term.
-        seen_students = set()
-
-        for enrollment in enrollments:
-            student = enrollment.student
-
-            if student.pk in seen_students:
-                continue
-
-            seen_students.add(student.pk)
-
-            expected_sum = (
-                school_queryset(StudentFee, school_context)
-                .filter(
-                    student=student,
-                    academic_year=current_year,
-                    term=current_term,
-                    student__school=school,
-                    academic_year__school=school,
-                    term__school=school,
-                )
-                .aggregate(total=Sum("total_expected"))["total"]
-            )
-
-            if expected_sum is None:
-                expected_sum = (
-                    school_queryset(FeeStructure, school_context)
-                    .filter(
-                        class_stream=enrollment.class_stream,
-                        academic_year=current_year,
-                        term=current_term,
-                        class_stream__school=school,
-                        academic_year__school=school,
-                        term__school=school,
-                    )
-                    .aggregate(total=Sum("amount"))["total"]
-                )
-
-            expected = expected_sum if expected_sum is not None else zero
-
-            paid_sum = (
-                school_queryset(Payment, school_context)
-                .filter(
-                    student=student,
-                    academic_year=current_year,
-                    term=current_term,
-                    student__school=school,
-                    academic_year__school=school,
-                    term__school=school,
-                    is_voided=False,
-                )
-                .aggregate(total=Sum("amount_paid"))["total"]
-            )
-
-            paid = paid_sum if paid_sum is not None else zero
-            balance = expected - paid
-
-            if balance > zero:
-                debtors_data.append({
-                    "student": student,
-                    "class": enrollment.class_stream,
-                    "expected": expected,
-                    "paid": paid,
-                    "balance": balance,
-                })
+    if current_term:
+        bills = records(StudentFee, school).filter(term=current_term).select_related("student")
+        paid_by_student = dict(records(Payment, school).filter(term=current_term, is_voided=False)
+            .values("student_id").annotate(total=Sum("amount_paid")).values_list("student_id", "total"))
+        enrollment_by_student = {row.student_id: row for row in
+            StudentEnrollment.objects.filter(school=school, term=current_term,
+                academic_year=current_year, student__school=school, class_stream__school=school)
+            .select_related("class_stream")}
+        for bill in bills:
+            expected = money(bill.total_expected)
+            paid = money(paid_by_student.get(bill.student_id))
+            if expected > paid:
+                enrollment = enrollment_by_student.get(bill.student_id)
+                debtors_data.append({"student": bill.student,
+                    "class": enrollment.class_stream if enrollment else None,
+                    "expected": expected, "paid": paid, "balance": expected-paid})
 
     context = {
         "debtors": debtors_data,
         "current_term": current_term,
         "school": school,
         "finance_ready": current_term is not None,
+        "terms": Term.objects.filter(school=school, academic_year__school=school),
     }
 
     return render(
@@ -2577,6 +2381,7 @@ def payment_receipt(request, payment_id):
         school_queryset,
     )
 
+    from .finance import records
     # Resolve the authenticated user's approved school.
     school_context = require_school_context(request.user)
 
@@ -2589,7 +2394,7 @@ def payment_receipt(request, payment_id):
 
     # Never retrieve payments across school boundaries.
     payment = get_object_or_404(
-        school_queryset(Payment, school_context).select_related(
+        records(Payment, school_context.school).select_related(
             "student",
             "academic_year",
             "term",
@@ -2659,7 +2464,8 @@ def void_payment_view(request, payment_id):
         "accountant",
     )
 
-    payments = school_queryset(Payment, school_context)
+    from .finance import records
+    payments = records(Payment, school_context.school)
 
     # Reject payment IDs belonging to other schools.
     payment = get_object_or_404(payments, pk=payment_id)
@@ -2690,8 +2496,7 @@ def void_payment_view(request, payment_id):
     with transaction.atomic():
         # Lock the record to prevent simultaneous void operations.
         payment = get_object_or_404(
-            school_queryset(Payment, school_context)
-            .select_for_update(),
+            records(Payment, school_context.school).select_for_update(),
             pk=payment_id,
         )
 
@@ -2769,125 +2574,8 @@ def student_financial_profile(request, student_id):
         pk=student_id,
     )
 
-    # 4. Retrieve the school's current term.
-    current_term = (
-        school_queryset(Term, school_context)
-        .filter(
-            is_current=True,
-            academic_year__school=school_context.school,
-        )
-        .first()
-    )
-
-    # 5. Retrieve the student's latest enrollment at this school.
-    enrollment = (
-        school_queryset(StudentEnrollment, school_context)
-        .filter(
-            student=student,
-            academic_year__school=school_context.school,
-            term__school=school_context.school,
-            class_stream__school=school_context.school,
-        )
-        .select_related(
-            "class_stream",
-            "academic_year",
-            "term",
-        )
-        .order_by("-date_enrolled", "-pk")
-        .first()
-    )
-
-    # Preserve the original behavior:
-    # Prefer the latest enrollment's term, otherwise current term.
-    term_to_use = enrollment.term if enrollment else current_term
-
-    # 6. Calculate expected fees.
-    expected_sum = None
-
-    if term_to_use:
-        expected_sum = (
-            school_queryset(StudentFee, school_context)
-            .filter(
-                student=student,
-                term=term_to_use,
-                academic_year__school=school_context.school,
-            )
-            .aggregate(total=Sum("total_expected"))["total"]
-        )
-
-        # Preserve the original fee-structure fallback.
-        if (
-            expected_sum is None
-            and enrollment
-            and enrollment.class_stream_id
-        ):
-            expected_sum = (
-                school_queryset(FeeStructure, school_context)
-                .filter(
-                    class_stream=enrollment.class_stream,
-                    term=term_to_use,
-                    academic_year__school=school_context.school,
-                )
-                .aggregate(total=Sum("amount"))["total"]
-            )
-
-    expected = Decimal(str(expected_sum or "0.00"))
-
-    # 7. Retrieve ONLY this school's payment records.
-    # Include voided payments in the audit ledger.
-    payments = (
-        school_queryset(Payment, school_context)
-        .filter(
-            student=student,
-            academic_year__school=school_context.school,
-            term__school=school_context.school,
-        )
-        .select_related(
-            "academic_year",
-            "term",
-            "received_by",
-            "voided_by",
-        )
-        .order_by("-date_paid")
-    )
-
-    # 8. Exclude voided payments from the paid amount.
-    valid_payments = payments.filter(is_voided=False)
-
-    if term_to_use:
-        paid_sum = (
-            valid_payments
-            .filter(term=term_to_use)
-            .aggregate(total=Sum("amount_paid"))["total"]
-        )
-    else:
-        paid_sum = (
-            valid_payments
-            .aggregate(total=Sum("amount_paid"))["total"]
-        )
-
-    paid = Decimal(str(paid_sum or "0.00"))
-
-    # 9. Calculate outstanding balance.
-    balance = expected - paid
-
-    # 10. Render the financial profile.
-    context = {
-        "student": student,
-        "enrollment": enrollment,
-        "term": term_to_use,
-        "expected": expected,
-        "paid": paid,
-        "balance": balance,
-        "payments": payments,
-        "school": school_context.school,
-    }
-
-    return render(
-        request,
-        "core/student_financial_profile.html",
-        context,
-    )
+    from .finance import ledger
+    return ledger(request, student_id=student.pk)
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -2979,43 +2667,25 @@ def generate_student_fees_for_term(*, school, term):
         .values_list("class_stream_id", "total")
     )
 
-    students = StudentProfile.objects.filter(
-        school=school,
-        current_class__school=school,
-        current_class_id__in=totals.keys(),
-    )
-
+    # Enrollment for the selected period is authoritative; current_class may
+    # already refer to a later term. Never rewrite an existing obligation.
+    from tenants.models import School
+    from .models import StudentEnrollment
     created_count = 0
-
     with transaction.atomic():
-        for student in students:
-            total = totals.get(
-                student.current_class_id,
-                Decimal("0.00"),
+        School.objects.select_for_update().get(pk=school.pk)
+        enrollments = StudentEnrollment.objects.filter(
+            school=school, term=term, academic_year=term.academic_year,
+            student__school=school, class_stream__school=school,
+            class_stream_id__in=totals, status="Active",
+        )
+        for enrollment in enrollments:
+            _, created = StudentFee.objects.get_or_create(
+                school=school, student_id=enrollment.student_id,
+                academic_year=term.academic_year, term=term,
+                defaults={"total_expected": money(totals[enrollment.class_stream_id])},
             )
-
-            if total is None:
-                continue
-
-            existing = StudentFee.objects.filter(
-                school=school,
-                student=student,
-                academic_year=term.academic_year,
-                term=term,
-            ).exists()
-
-            if existing:
-                continue
-
-            StudentFee.objects.create(
-                school=school,
-                student=student,
-                academic_year=term.academic_year,
-                term=term,
-                total_expected=total,
-            )
-
-            created_count += 1
+            created_count += int(created)
 
     return created_count
 
@@ -3183,8 +2853,9 @@ def daily_collection_report(request):
     except ValueError:
         report_date = timezone.localdate()
 
+    from .finance import records, period
     payments = (
-        school_queryset(Payment, school_context)
+        records(Payment, school_context.school)
         .filter(
             date_paid__date=report_date,
             is_voided=False,
@@ -3195,6 +2866,10 @@ def daily_collection_report(request):
         .select_related("student", "term", "academic_year")
         .order_by("-date_paid", "-pk")
     )
+
+    if request.GET.get("term"):
+        from .finance import period
+        payments = payments.filter(term=period(request, school_context.school))
 
     method_summaries = (
         payments.values("payment_method")
@@ -3218,9 +2893,11 @@ def daily_collection_report(request):
             "report_date": report_date,
             "payments": payments,
             "method_summaries": method_summaries,
-            "total_collection": total_collection,
+            "total_collection": money(total_collection),
             "total_transactions": payments.count(),
             "school": school_context.school,
+            "current_term": period(request, school_context.school) if request.GET.get("term") else None,
+            "terms": Term.objects.filter(school=school_context.school, academic_year__school=school_context.school),
         },
     )
 from django.shortcuts import render
@@ -3321,23 +2998,9 @@ def class_collections_report(request):
     school = school_context.school
     zero = Decimal("0.00")
 
-    current_year = (
-        school_queryset(AcademicYear, school_context)
-        .filter(is_current=True)
-        .first()
-    )
-
-    current_term = None
-
-    if current_year is not None:
-        current_term = (
-            school_queryset(Term, school_context)
-            .filter(
-                academic_year=current_year,
-                is_current=True,
-            )
-            .first()
-        )
+    from .finance import period
+    current_term = period(request, school)
+    current_year = current_term.academic_year if current_term else None
 
     class_data = []
 
@@ -3380,26 +3043,9 @@ def class_collections_report(request):
 
             total_expected = zero
             total_collected = zero
+            class_outstanding = zero
+            class_credit = zero
             transaction_count = 0
-
-            structure_sum = (
-                school_queryset(FeeStructure, school_context)
-                .filter(
-                    class_stream=class_stream,
-                    academic_year=current_year,
-                    term=current_term,
-                    class_stream__school=school,
-                    academic_year__school=school,
-                    term__school=school,
-                )
-                .aggregate(total=Sum("amount"))["total"]
-            )
-
-            structure_expected = (
-                structure_sum
-                if structure_sum is not None
-                else zero
-            )
 
             for student in students:
                 expected_sum = (
@@ -3418,7 +3064,7 @@ def class_collections_report(request):
                 expected = (
                     expected_sum
                     if expected_sum is not None
-                    else structure_expected
+                    else zero
                 )
 
                 payments = (
@@ -3438,23 +3084,20 @@ def class_collections_report(request):
                     total=Sum("amount_paid")
                 )["total"]
 
+                expected = money(expected)
+                collected = money(paid_sum)
                 total_expected += expected
-                total_collected += (
-                    paid_sum if paid_sum is not None else zero
-                )
+                total_collected += collected
+                class_outstanding += max(expected - collected, zero)
+                class_credit += max(collected - expected, zero)
                 transaction_count += payments.count()
 
             balance = total_expected - total_collected
 
             collection_rate = (
-                round(
-                    float(
-                        total_collected / total_expected * 100
-                    ),
-                    1,
-                )
+                (total_collected / total_expected * Decimal("100")).quantize(Decimal("0.1"))
                 if total_expected > zero
-                else 0.0
+                else Decimal("0.0")
             )
 
             class_data.append({
@@ -3463,7 +3106,9 @@ def class_collections_report(request):
                 "total_students": len(students),
                 "total_expected": total_expected,
                 "total_collected": total_collected,
-                "balance": balance,
+                "balance": class_outstanding,
+                "net_balance": balance,
+                "credit": class_credit,
                 "collection_rate": collection_rate,
                 "transaction_count": transaction_count,
             })
@@ -3477,6 +3122,7 @@ def class_collections_report(request):
             "current_year": current_year,
             "current_term": current_term,
             "finance_ready": current_term is not None,
+            "terms": Term.objects.filter(school=school, academic_year__school=school),
         },
     )
 
@@ -3528,23 +3174,9 @@ def class_collection_detail(request, class_id):
         pk=class_id,
     )
 
-    current_year = (
-        school_queryset(AcademicYear, school_context)
-        .filter(is_current=True)
-        .first()
-    )
-
-    current_term = None
-
-    if current_year is not None:
-        current_term = (
-            school_queryset(Term, school_context)
-            .filter(
-                academic_year=current_year,
-                is_current=True,
-            )
-            .first()
-        )
+    from .finance import period
+    current_term = period(request, school)
+    current_year = current_term.academic_year if current_term else None
 
     student_details = []
     class_total_expected = zero
@@ -3568,25 +3200,6 @@ def class_collection_detail(request, class_id):
 
         # Match the summary report's deduplication rule.
         seen_students = set()
-
-        structure_sum = (
-            school_queryset(FeeStructure, school_context)
-            .filter(
-                class_stream=class_stream,
-                academic_year=current_year,
-                term=current_term,
-                class_stream__school=school,
-                academic_year__school=school,
-                term__school=school,
-            )
-            .aggregate(total=Sum("amount"))["total"]
-        )
-
-        structure_expected = (
-            structure_sum
-            if structure_sum is not None
-            else zero
-        )
 
         for enrollment in enrollments:
             student = enrollment.student
@@ -3612,7 +3225,7 @@ def class_collection_detail(request, class_id):
             expected = (
                 expected_sum
                 if expected_sum is not None
-                else structure_expected
+                else zero
             )
 
             payments = (
@@ -3636,6 +3249,7 @@ def class_collection_detail(request, class_id):
                 paid_sum if paid_sum is not None else zero
             )
 
+            expected, collected = money(expected), money(collected)
             balance = expected - collected
 
             class_total_expected += expected
@@ -3649,9 +3263,8 @@ def class_collection_detail(request, class_id):
                 "payments_count": payments.count(),
             })
 
-    class_balance = (
-        class_total_expected - class_total_collected
-    )
+    class_balance = sum((max(row["balance"], zero) for row in student_details), zero)
+    class_credit = sum((max(-row["balance"], zero) for row in student_details), zero)
 
     return render(
         request,
@@ -3662,10 +3275,12 @@ def class_collection_detail(request, class_id):
             "class_total_expected": class_total_expected,
             "class_total_collected": class_total_collected,
             "class_balance": class_balance,
+            "class_credit": class_credit,
             "school": school,
             "current_year": current_year,
             "current_term": current_term,
             "finance_ready": current_term is not None,
+            "terms": Term.objects.filter(school=school, academic_year__school=school),
         },
     )
 
@@ -3968,3 +3583,5 @@ def fee_configuration(request):
             "structures": structures,
         },
     )
+
+from .finance import money

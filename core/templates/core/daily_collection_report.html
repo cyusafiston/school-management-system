@@ -31,7 +31,7 @@
     <div class="filter-section">
         <form method="GET" action="">
             <label for="date"><strong>Select Report Date:</strong></label>
-            <input type="date" id="date" name="date" value="{{ report_date|date:'Y-m-d' }}" style="padding: 6px; margin-left: 10px;">
+            <label>Term <select name="term"><option value="">All terms</option>{% for option in terms %}<option value="{{ option.pk }}" {% if option.pk == current_term.pk %}selected{% endif %}>{{ option.academic_year }} — {{ option.name }}</option>{% endfor %}</select></label><input type="date" id="date" name="date" value="{{ report_date|date:'Y-m-d' }}" style="padding: 6px; margin-left: 10px;">
             <button type="submit" style="padding: 6px 15px; background: #003366; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Filter Date</button>
         </form>
     </div>
@@ -39,7 +39,7 @@
     <div class="summary-cards">
         <div class="card">
             <h4>Total Collections ({{ report_date|date:"d M Y" }})</h4>
-            <p>{{ total_collection|floatformat:0|intcomma }} RWF</p>
+            <p>{{ total_collection|floatformat:2|intcomma }} RWF</p>
         </div>
         <div class="card">
             <h4>Total Transactions</h4>
@@ -63,7 +63,7 @@
             {% for summary in method_summaries %}
             <tr>
                 <td>{{ summary.payment_method }}</td>
-                <td><strong>{{ summary.total|floatformat:0|intcomma }} RWF</strong></td>
+                <td><strong>{{ summary.total|floatformat:2|intcomma }} RWF</strong></td>
             </tr>
             {% empty %}
             <tr>
@@ -93,7 +93,7 @@
                 <td>{{ payment.student }} ({{ payment.student.registration_number }})</td>
                 <td>{{ payment.payment_method }}</td>
                 <td>{{ payment.reference_number|default:"N/A" }}</td>
-                <td>{{ payment.amount_paid|floatformat:0|intcomma }} RWF</td>
+                <td>{{ payment.amount_paid|floatformat:2|intcomma }} RWF</td>
             </tr>
             {% empty %}
             <tr>

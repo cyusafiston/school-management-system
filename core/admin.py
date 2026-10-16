@@ -544,12 +544,16 @@ class PaymentAdmin(BaseAdmin):
     def get_readonly_fields(self, request, obj=None):
         always = ("receipt_number", "received_by", "date_paid", "is_voided", "void_reason", "voided_at", "voided_by")
         if obj:  # once recorded, money fields are frozen - void and re-enter instead
-            return always + ("student", "academic_year", "term", "amount_paid", "payment_method", "reference_number")
+            return always + ("student", "academic_year", "term", "amount_paid", "payment_method", "reference_number", "notes")
         return always
 
     def has_delete_permission(self, request, obj=None):
         # Payments are voided, never deleted (keeps the audit trail intact)
-        return request.user.is_superuser
+        return False
+
+    def has_add_permission(self, request):
+        # Collection must pass school authorization, bill locking and replay checks.
+        return False
 
     def save_model(self, request, obj, form, change):
         if not change and not obj.received_by_id:

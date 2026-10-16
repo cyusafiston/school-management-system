@@ -8,9 +8,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Accountant Dashboard | SMS</title>
 
-```
+
 <script src="https://cdn.tailwindcss.com"></script>
-```
+
 
 </head>
 
@@ -18,7 +18,7 @@
 
 <div class="flex h-screen overflow-hidden">
 
-```
+
 <!-- =========================================================
      ACCOUNTANT SIDEBAR
 ========================================================== -->
@@ -87,7 +87,7 @@
     <!-- =====================================================
          MAIN DASHBOARD AREA
     ====================================================== -->
-    <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
+    <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">{% include 'core/finance_period_filter.html' %}
 
 
         <!-- =================================================
@@ -224,7 +224,7 @@
                 </p>
 
                 <p class="text-xl font-bold text-gray-900 mt-1">
-                    {{ total_expected|floatformat:0|intcomma }}
+                    {{ total_expected|floatformat:2|intcomma }}
                     <span class="text-sm font-medium text-gray-500">RWF</span>
                 </p>
 
@@ -264,7 +264,7 @@
                 </p>
 
                 <p class="text-xl font-bold text-gray-900 mt-1">
-                    {{ total_collected|floatformat:0|intcomma }}
+                    {{ total_collected|floatformat:2|intcomma }}
                     <span class="text-sm font-medium text-gray-500">RWF</span>
                 </p>
 
@@ -304,7 +304,7 @@
                 </p>
 
                 <p class="text-xl font-bold text-gray-900 mt-1">
-                    {{ outstanding_balance|floatformat:0|intcomma }}
+                    {{ outstanding_balance|floatformat:2|intcomma }}
                     <span class="text-sm font-medium text-gray-500">RWF</span>
                 </p>
 
@@ -344,7 +344,7 @@
                 </p>
 
                 <p class="text-xl font-bold text-gray-900 mt-1">
-                    {{ total_overpaid|floatformat:0|intcomma }}
+                    {{ total_overpaid|floatformat:2|intcomma }}
                     <span class="text-sm font-medium text-gray-500">RWF</span>
                 </p>
 
@@ -384,7 +384,7 @@
                 </p>
 
                 <p class="text-xl font-bold text-emerald-600 mt-1">
-                    {{ today_collections|floatformat:0|intcomma }}
+                    {{ today_collections|floatformat:2|intcomma }}
                     <span class="text-sm font-medium text-gray-500">RWF</span>
                 </p>
 
@@ -523,7 +523,7 @@
                    class="group flex items-center gap-3 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-4 py-3 rounded-lg transition">
 
                     <div class="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center">
-                        <span class="text-lg">??</span>
+                        <span class="text-lg">RWF</span>
                     </div>
 
                     <div>
@@ -615,7 +615,7 @@
                 </div>
 
                 <p class="text-3xl font-bold text-gray-900">
-                    {{ today_collections|floatformat:0|intcomma }}
+                    {{ today_collections|floatformat:2|intcomma }}
                     <span class="text-sm font-medium text-gray-500">
                         RWF
                     </span>
@@ -715,7 +715,7 @@
                         </p>
 
                         <p class="text-sm font-bold text-gray-800">
-                            {{ total_expected|floatformat:0|intcomma }} RWF
+                            {{ total_expected|floatformat:2|intcomma }} RWF
                         </p>
                     </div>
 
@@ -725,7 +725,7 @@
                         </p>
 
                         <p class="text-sm font-bold text-green-600">
-                            {{ total_collected|floatformat:0|intcomma }} RWF
+                            {{ total_collected|floatformat:2|intcomma }} RWF
                         </p>
                     </div>
 
@@ -735,7 +735,7 @@
                         </p>
 
                         <p class="text-sm font-bold text-red-600">
-                            {{ outstanding_balance|floatformat:0|intcomma }} RWF
+                            {{ outstanding_balance|floatformat:2|intcomma }} RWF
                         </p>
                     </div>
 
@@ -847,7 +847,7 @@
                                     <td class="px-6 py-4 whitespace-nowrap">
 
                                         <span class="text-sm font-bold text-green-600">
-                                            {{ payment.amount_paid|floatformat:0|intcomma }}
+                                            {{ payment.amount_paid|floatformat:2|intcomma }}
                                             RWF
                                         </span>
 
@@ -971,7 +971,7 @@
     </main>
 
 </div>
-```
+
 
 </div>
 

@@ -16,7 +16,7 @@
                 <a href="{% url 'accountant_dashboard' %}" class="text-sm bg-gray-100 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-200 transition">Back to Dashboard</a>
             </header>
 
-            <main class="p-8 max-w-7xl w-full mx-auto flex-grow">
+            <main class="p-8 max-w-7xl w-full mx-auto flex-grow">{% include 'core/finance_period_filter.html' %}
                 <div class="bg-white rounded-lg shadow overflow-hidden">
                     <div class="p-6 border-b">
                         <h2 class="text-xl font-semibold text-gray-800">Collections & Expected Breakdown by Class</h2>
@@ -39,14 +39,14 @@
                                 {% for item in class_data %}
                                 <tr>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                        <a href="{% url 'class_collection_detail' item.class_id %}" class="text-blue-600 hover:text-blue-900 hover:underline">
+                                        <a href="{% url 'class_collection_detail' item.class_id %}?term={{ current_term.pk }}" class="text-blue-600 hover:text-blue-900 hover:underline">
                                             {{ item.class_name }}
                                         </a>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ item.total_students }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">{{ item.total_expected|floatformat:0|intcomma }} RWF</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">{{ item.total_collected|floatformat:0|intcomma }} RWF</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">{{ item.balance|floatformat:0|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">{{ item.total_expected|floatformat:2|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">{{ item.total_collected|floatformat:2|intcomma }} RWF</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">{{ item.balance|floatformat:2|intcomma }} RWF<br><small>Credit: {{ item.credit|floatformat:2|intcomma }} RWF</small></td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         <span class="px-2.5 py-1 rounded-full text-xs font-bold 
                                             {% if item.collection_rate >= 80 %} bg-green-100 text-green-800 

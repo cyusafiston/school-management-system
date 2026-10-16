@@ -392,3 +392,10 @@ urlpatterns.insert(
         name="teacher_assignment_management",
     ),
 )
+
+# Scoped financial statements (staff and personal student entry points).
+from core import finance
+urlpatterns += [
+    path("school/finance/students/<int:student_id>/statement/", finance.ledger, name="student_financial_statement"),
+    path("student/finances/", finance.ledger, name="student_finances"),
+]

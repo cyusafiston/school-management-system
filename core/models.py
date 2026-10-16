@@ -1200,6 +1200,14 @@ class FeeStructure(models.Model):
                 "Term must belong to the selected academic year."
             )
 
+        from decimal import Decimal, InvalidOperation
+        try:
+            amount = Decimal(str(self.amount))
+            if not amount.is_finite() or amount < Decimal("0"):
+                errors["amount"] = "Amount must be finite and nonnegative."
+        except (InvalidOperation, ValueError, TypeError):
+            errors["amount"] = "Enter a valid monetary amount."
+
         if errors:
             raise ValidationError(errors)
 
@@ -1261,6 +1269,14 @@ class StudentFee(models.Model):
             errors["term"] = (
                 "Term must belong to the selected academic year."
             )
+
+        from decimal import Decimal, InvalidOperation
+        try:
+            amount = Decimal(str(self.total_expected))
+            if not amount.is_finite() or amount < Decimal("0"):
+                errors["total_expected"] = "Amount must be finite and nonnegative."
+        except (InvalidOperation, ValueError, TypeError):
+            errors["total_expected"] = "Enter a valid monetary amount."
 
         if errors:
             raise ValidationError(errors)
@@ -1396,7 +1412,13 @@ class Payment(models.Model):
                 "the selected academic year."
             )
 
-        if self.amount_paid is not None and self.amount_paid <= 0:
+        from decimal import Decimal, InvalidOperation
+        try:
+            amount = Decimal(str(self.amount_paid))
+            invalid_amount = not amount.is_finite() or amount <= 0
+        except (InvalidOperation, ValueError, TypeError):
+            invalid_amount = True
+        if invalid_amount:
             errors["amount_paid"] = (
                 "Payment amount must be greater than zero."
             )
@@ -1434,9 +1456,26 @@ class Payment(models.Model):
                 f"REC-{year}-{uuid.uuid4().hex.upper()}"
             )
 
+        from django.core.exceptions import ValidationError
+        # Financial records are append-only apart from a single audited void.
+        if self.pk:
+            original = type(self).objects.get(pk=self.pk)
+            immutable = ("school_id", "student_id", "academic_year_id", "term_id",
+                         "amount_paid", "payment_method", "reference_number",
+                         "receipt_number", "received_by_id", "date_paid", "notes")
+            if any(getattr(original, field) != getattr(self, field) for field in immutable):
+                raise ValidationError("Recorded payment details cannot be edited; void and re-enter.")
+            if original.is_voided and any(getattr(original, field) != getattr(self, field)
+                    for field in ("is_voided", "void_reason", "voided_at", "voided_by_id")):
+                raise ValidationError("A voided payment and its audit details cannot be changed.")
+        else:
+            self.reference_number = (self.reference_number or "").strip() or None
         self.full_clean()
-
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        raise ValidationError("Payments must be voided, never deleted.")
 
     def __str__(self):
         receipt_str = self.receipt_number or "PENDING"
@@ -1517,3 +1556,14 @@ class ClassSubject(models.Model):
             f"{self.class_stream.name} - {self.subject.name} "
             f"({self.academic_year.name})"
         )
+
+
+# This also covers queryset deletion and parent cascades; SQL outside the ORM
+# still needs a separately reviewed database protection migration.
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
+
+@receiver(pre_delete, sender=Payment)
+def protect_payment_history(sender, instance, **kwargs):
+    from django.db.models.deletion import ProtectedError
+    raise ProtectedError("Payment history is retained; void the payment instead.", [instance])

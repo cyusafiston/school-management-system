@@ -15,7 +15,7 @@
     <div class="max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden p-8 border border-gray-200">
         <!-- School Header -->
         <div class="text-center border-b pb-4 mb-6">
-            <h1 class="text-xl font-bold text-blue-900 tracking-wide">SCHOOL MANAGEMENT SYSTEM</h1>
+            <h1 class="text-xl font-bold text-blue-900 tracking-wide">{{ school.name }}</h1>
             <p class="text-xs text-gray-500 uppercase">Official Payment Receipt</p>
         </div>
 
@@ -61,7 +61,7 @@
             {% endif %}
             <div class="flex justify-between text-lg font-bold text-blue-900 pt-2 border-t">
                 <span>Amount Paid:</span>
-                <span>{{ payment.amount_paid|floatformat:0 }} RWF</span>
+                <span>{{ payment.amount_paid|floatformat:2 }} RWF</span>
             </div>
         </div>
 
@@ -74,8 +74,8 @@
         <!-- Actions (Hidden on Print) -->
         <div class="no-print flex gap-3">
             <button onclick="window.print()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition">Print Receipt</button>
-            <a href="{% url 'school_home' %}" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium text-center hover:bg-gray-300 transition">Dashboard</a>
+            <a href="{% url 'accountant_dashboard' %}" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium text-center hover:bg-gray-300 transition">Dashboard</a>
         </div>
     </div>
-</body>
+{% if payment.is_voided %}<p>VOIDED: {{ payment.void_reason }} — {{ payment.voided_at }}</p>{% else %}<a href="{% url 'void_payment' payment.pk %}">Void this payment</a>{% endif %}</body>
 </html>

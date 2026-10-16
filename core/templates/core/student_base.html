@@ -11,7 +11,7 @@
 <header><strong>{{ school.name }} · Student Portal</strong><p>{{ student_profile.first_name }} {{ student_profile.last_name }} · {{ student_profile.registration_number }}</p>
 <nav aria-label="Student navigation">
 <a href="{% url 'student_dashboard' %}">Dashboard</a><a href="{% url 'student_subjects' %}">Subjects</a><a href="{% url 'student_grades' %}">Grades</a><a href="{% url 'student_attendance' %}">Attendance</a><a href="{% url 'student_homework' %}">Homework</a><a href="{% url 'student_notices' %}">Notices</a><a href="{% url 'student_schedule' %}">Schedule</a>
-<a href="{% url 'student_profile' %}">My profile</a><a href="{% url 'change_password' %}">Change password</a>
+<a href="{% url 'student_finances' %}">Finances</a><a href="{% url 'student_profile' %}">My profile</a><a href="{% url 'change_password' %}">Change password</a>
 <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Sign out</button></form>
 </nav></header>
 <main>{% for message in messages %}<p role="status">{{ message }}</p>{% endfor %}
