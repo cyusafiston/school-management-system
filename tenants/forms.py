@@ -239,3 +239,113 @@ class SubjectSetupForm(forms.ModelForm):
             instance.save()
 
         return instance
+
+
+# STEP 881 - TENANT-SAFE TEACHER REGISTRATION
+
+from django import forms as teacher_forms
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.db import transaction
+
+
+class TeacherRegistrationForm(teacher_forms.Form):
+    first_name = teacher_forms.CharField(max_length=150)
+    last_name = teacher_forms.CharField(max_length=150)
+    username = teacher_forms.CharField(max_length=150)
+    email = teacher_forms.EmailField()
+    password1 = teacher_forms.CharField(
+        widget=teacher_forms.PasswordInput,
+        label="Password",
+    )
+    password2 = teacher_forms.CharField(
+        widget=teacher_forms.PasswordInput,
+        label="Confirm password",
+    )
+
+    def __init__(self, *args, school, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if school is None or school.pk is None:
+            raise ValueError("A saved school is required.")
+
+        self.school = school
+
+    def clean_username(self):
+        username = self.cleaned_data["username"].strip()
+        User = get_user_model()
+
+        if User.objects.filter(
+            username__iexact=username
+        ).exists():
+            raise ValidationError(
+                "This username is already taken."
+            )
+
+        return username
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        password1 = cleaned_data.get("password1")
+        password2 = cleaned_data.get("password2")
+
+        if password1 and password2:
+            if password1 != password2:
+                self.add_error(
+                    "password2",
+                    "Passwords do not match.",
+                )
+            else:
+                User = get_user_model()
+                candidate = User(
+                    username=cleaned_data.get("username", ""),
+                    first_name=cleaned_data.get("first_name", ""),
+                    last_name=cleaned_data.get("last_name", ""),
+                    email=cleaned_data.get("email", ""),
+                )
+
+                try:
+                    validate_password(password1, user=candidate)
+                except ValidationError as error:
+                    self.add_error("password1", error)
+
+        return cleaned_data
+
+    def save(self):
+        if not self.is_valid():
+            raise ValueError(
+                "Cannot save an invalid teacher registration."
+            )
+
+        from core.models import UserProfile
+        from tenants.models import SchoolMembership
+
+        User = get_user_model()
+
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=self.cleaned_data["username"],
+                email=self.cleaned_data["email"],
+                password=self.cleaned_data["password1"],
+                first_name=self.cleaned_data["first_name"],
+                last_name=self.cleaned_data["last_name"],
+                is_active=True,
+                is_staff=False,
+                is_superuser=False,
+            )
+
+            UserProfile.objects.update_or_create(
+                user=user,
+                defaults={"role": "Teacher"},
+            )
+
+            SchoolMembership.objects.create(
+                school=self.school,
+                user=user,
+                role=SchoolMembership.Role.TEACHER,
+                is_active=True,
+            )
+
+        return user

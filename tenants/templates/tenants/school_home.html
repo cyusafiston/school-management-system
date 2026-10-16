@@ -262,6 +262,10 @@
                 Curriculum
             </a>
 
+            <a class="nav-link" href="{% url 'teacher_management' %}">
+                Manage Teachers
+            </a>
+
             <a class="nav-link" href="{% url 'accountant_dashboard' %}">
                 Finance
             </a>
@@ -333,6 +337,16 @@
                         before configuring curriculum assignments.
                     </p>
                     <span class="card-action">Open Academic Setup &rarr;</span>
+                </a>
+
+                <a class="card" href="{% url 'teacher_management' %}">
+                    <div class="card-icon">&#128105;&#8205;&#127979;</div>
+                    <h3>Teacher Management</h3>
+                    <p>
+                        Register teachers and manage teaching staff
+                        belonging to your school.
+                    </p>
+                    <span class="card-action">Manage Teachers &rarr;</span>
                 </a>
 
                 <a class="card" href="{% url 'curriculum_management' %}">

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Teacher Management | {{ school.name }}</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, system-ui, sans-serif;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: #0b1220;
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+<div style="max-width:1100px;margin:0 auto;padding:24px;color:#e2e8f0;">
+
+    <div style="margin-bottom:28px;">
+        <a href="{% url 'school_home' %}"
+           style="color:#93c5fd;text-decoration:none;">
+            ? Back to Dashboard
+        </a>
+
+        <h1 style="font-size:30px;margin:18px 0 8px;">
+            Teacher Management
+        </h1>
+
+        <p style="color:#94a3b8;">
+            Register and manage teachers for {{ school.name }}.
+        </p>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div style="padding:14px;margin-bottom:16px;
+                        background:#1e293b;border-radius:10px;">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div style="display:grid;
+                grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+                gap:24px;align-items:start;">
+
+        <section style="background:#0f172a;padding:24px;
+                        border:1px solid #334155;border-radius:16px;">
+
+            <h2 style="font-size:21px;margin-top:0;">
+                Register New Teacher
+            </h2>
+
+            <form method="post">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <div style="color:#fca5a5;margin-bottom:14px;">
+                        {{ form.non_field_errors }}
+                    </div>
+                {% endif %}
+
+                {% for field in form %}
+                    <div style="margin-bottom:18px;">
+                        <label for="{{ field.id_for_label }}"
+                               style="display:block;margin-bottom:7px;
+                                      font-weight:600;">
+                            {{ field.label }}
+                        </label>
+
+                        <div class="teacher-field">
+                            {{ field }}
+                        </div>
+
+                        {% if field.help_text %}
+                            <small style="color:#94a3b8;">
+                                {{ field.help_text }}
+                            </small>
+                        {% endif %}
+
+                        {% for error in field.errors %}
+                            <p style="color:#fca5a5;font-size:13px;
+                                      margin:5px 0;">
+                                {{ error }}
+                            </p>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+
+                <button type="submit"
+                        style="width:100%;padding:13px;
+                               background:#2563eb;color:white;
+                               border:0;border-radius:9px;
+                               font-weight:700;cursor:pointer;">
+                    Create Teacher Account
+                </button>
+            </form>
+        </section>
+
+        <section style="background:#0f172a;padding:24px;
+                        border:1px solid #334155;border-radius:16px;">
+
+            <h2 style="font-size:21px;margin-top:0;">
+                Registered Teachers ({{ teachers|length }})
+            </h2>
+
+            {% for membership in teachers %}
+                <div style="padding:15px 0;
+                            border-bottom:1px solid #334155;">
+                    <strong>
+                        {{ membership.user.get_full_name|default:membership.user.username }}
+                    </strong>
+
+                    <div style="color:#94a3b8;margin-top:5px;">
+                        @{{ membership.user.username }}
+                    </div>
+
+                    <div style="color:#94a3b8;margin-top:4px;">
+                        {{ membership.user.email }}
+                    </div>
+
+                    <div style="margin-top:9px;">
+                        {% if membership.is_active and membership.user.is_active %}
+                            <span style="color:#86efac;">? Active</span>
+                        {% else %}
+                            <span style="color:#fca5a5;">? Inactive</span>
+                        {% endif %}
+                    </div>
+                </div>
+            {% empty %}
+                <p style="color:#94a3b8;">
+                    No teachers registered yet.
+                    Create your first teacher using the form.
+                </p>
+            {% endfor %}
+        </section>
+
+    </div>
+</div>
+
+<style>
+.teacher-field input {
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+    padding:12px;
+    border:1px solid #475569;
+    border-radius:9px;
+    background:#1e293b;
+    color:#f8fafc;
+    font-size:15px;
+}
+.teacher-field input:focus {
+    outline:2px solid #3b82f6;
+    outline-offset:1px;
+}
+</style>
+</body>
+</html>

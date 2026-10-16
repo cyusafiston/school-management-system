@@ -334,3 +334,69 @@ def academic_setup(request):
             "subjects": subjects,
         },
     )
+
+
+# STEP 883 - TENANT-SAFE TEACHER ONBOARDING
+
+@login_required
+def teacher_management(request):
+    """School administrators manage teachers in their own school."""
+    from django.contrib import messages
+    from django.db import IntegrityError, transaction
+    from django.shortcuts import redirect, render
+
+    from tenants.access import (
+        require_school_context,
+        require_school_role,
+    )
+    from tenants.forms import TeacherRegistrationForm
+    from tenants.models import SchoolMembership
+
+    context = require_school_context(request.user)
+    require_school_role(context, "administrator")
+
+    school = context.school
+
+    if request.method == "POST":
+        form = TeacherRegistrationForm(
+            request.POST,
+            school=school,
+        )
+
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    form.save()
+            except IntegrityError:
+                form.add_error(
+                    "username",
+                    "This username is unavailable. Please try another.",
+                )
+            else:
+                messages.success(
+                    request,
+                    "Teacher account created successfully.",
+                )
+                return redirect("teacher_management")
+    else:
+        form = TeacherRegistrationForm(school=school)
+
+    teachers = (
+        SchoolMembership.objects
+        .filter(
+            school=school,
+            role=SchoolMembership.Role.TEACHER,
+        )
+        .select_related("user")
+        .order_by("user__first_name", "user__username")
+    )
+
+    return render(
+        request,
+        "tenants/teacher_management.html",
+        {
+            "school": school,
+            "form": form,
+            "teachers": teachers,
+        },
+    )

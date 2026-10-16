@@ -333,3 +333,16 @@ path(
 # Uploaded media is also not served through an unrestricted
 # development URL here. Private files will require access controls.
 # ================================================================
+
+
+# STEP 887 - SCHOOL TEACHER MANAGEMENT
+from tenants.views import teacher_management
+
+urlpatterns.insert(
+    0,
+    path(
+        "school/teachers/",
+        teacher_management,
+        name="teacher_management",
+    ),
+)
