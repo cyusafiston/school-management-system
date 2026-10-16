@@ -4,93 +4,461 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Curriculum Management | {{ school.name }}</title>
+
+    <style>
+        :root {
+            --navy: #101d35;
+            --blue: #2563eb;
+            --background: #f5f7fb;
+            --border: #e2e8f0;
+            --text: #172033;
+            --muted: #64748b;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: var(--background);
+            color: var(--text);
+        }
+
+        .layout { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: 250px;
+            flex-shrink: 0;
+            background: var(--navy);
+            color: white;
+            padding: 28px 18px;
+        }
+
+        .brand {
+            font-size: 21px;
+            font-weight: 800;
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        .brand-subtitle {
+            color: #aabbd5;
+            font-size: 12px;
+            margin-bottom: 35px;
+        }
+
+        .nav-label {
+            font-size: 11px;
+            color: #8295b3;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 24px 10px 12px;
+        }
+
+        .nav-link {
+            display: block;
+            color: #dce6f5;
+            text-decoration: none;
+            padding: 13px 14px;
+            border-radius: 9px;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: #253c60;
+            color: white;
+        }
+
+        .content {
+            flex: 1;
+            min-width: 0;
+            padding: 34px;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        h1 { margin: 0 0 8px; font-size: 27px; }
+        h2 { font-size: 19px; margin: 0 0 20px; }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .badge {
+            padding: 9px 14px;
+            background: #dcfce7;
+            color: #166534;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 18px;
+            margin-bottom: 28px;
+        }
+
+        .stat, .panel {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+        }
+
+        .stat-number {
+            font-size: 30px;
+            font-weight: bold;
+            color: #1d4ed8;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .panel { margin-bottom: 24px; }
+
+        .panel-description {
+            color: var(--muted);
+            font-size: 13px;
+            margin: -10px 0 24px;
+            line-height: 1.6;
+        }
+
+        .configuration {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .record-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .record-list li {
+            background: #f8fafc;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 9px;
+            font-size: 14px;
+        }
+
+        .assignment-form p { margin: 0 0 20px; }
+
+        .assignment-form label {
+            display: block;
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .assignment-form select,
+        .assignment-form input:not([type="checkbox"]) {
+            width: 100%;
+            max-width: 600px;
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: white;
+            font: inherit;
+            font-size: 14px;
+        }
+
+        .assignment-form input[type="checkbox"] {
+            width: 17px;
+            height: 17px;
+            vertical-align: middle;
+            accent-color: var(--blue);
+        }
+
+        .assignment-form .errorlist {
+            color: #b91c1c;
+            font-size: 13px;
+            padding-left: 20px;
+        }
+
+        .btn {
+            border: 0;
+            background: var(--blue);
+            color: white;
+            padding: 13px 20px;
+            border-radius: 9px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .btn:hover { background: #1d4ed8; }
+
+        .btn-danger {
+            background: #fef2f2;
+            color: #b91c1c;
+            padding: 8px 12px;
+        }
+
+        .btn-danger:hover { background: #fee2e2; }
+
+        .table-wrap { overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th {
+            text-align: left;
+            padding: 15px;
+            background: #f8fafc;
+            color: #475569;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        td {
+            padding: 15px;
+            border-top: 1px solid var(--border);
+        }
+
+        .action-link {
+            color: var(--blue);
+            text-decoration: none;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .actions form { margin: 0; }
+
+        .empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 32px;
+        }
+
+        .footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 35px;
+        }
+
+        @media (max-width: 950px) {
+            .summary { grid-template-columns: 1fr; }
+            .configuration { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 700px) {
+            .layout { display: block; }
+            .sidebar { width: 100%; padding: 20px; }
+            .brand-subtitle { margin-bottom: 15px; }
+            .content { padding: 22px 16px; }
+            .topbar { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
 </head>
+
 <body>
-    <main>
-        <h1>Curriculum Management</h1>
-        <p><strong>School:</strong> {{ school.name }}</p>
+<div class="layout">
 
-        <h2>Academic Years</h2>
-        <ul>
-            {% for year in academic_years %}
-                <li>{{ year.name }}</li>
-            {% empty %}
-                <li>No academic years configured.</li>
-            {% endfor %}
-        </ul>
+    <aside class="sidebar">
+        <div class="brand">School Management</div>
+        <div class="brand-subtitle">School Administration Platform</div>
 
-        <h2>Classes</h2>
-        <ul>
-            {% for class in classes %}
-                <li>{{ class.name }}</li>
-            {% empty %}
-                <li>No classes configured.</li>
-            {% endfor %}
-        </ul>
+        <div class="nav-label">Workspace</div>
 
-        <h2>Assign Subject to Class</h2>
+        <a class="nav-link" href="{% url 'school_home' %}">
+            Dashboard
+        </a>
 
-        <form method="post">
-            {% csrf_token %}
-            {{ form.non_field_errors }}
-            {{ form.as_p }}
-            <button type="submit">Save Curriculum Assignment</button>
-        </form>
+        <a class="nav-link active" href="{% url 'curriculum_management' %}">
+            Curriculum
+        </a>
 
-        <hr>
+        <a class="nav-link" href="{% url 'accountant_dashboard' %}">
+            Finance
+        </a>
 
-        <h2>Curriculum Assignments</h2>
-        <table border="1" cellpadding="8">
-            <thead>
-                <tr>
-                    <th>Academic Year</th>
-                    <th>Class</th>
-                    <th>Subject</th>
-                    <th>Type</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in curriculum %}
-                <tr>
-                    <td>{{ item.academic_year.name }}</td>
-                    <td>{{ item.class_stream.name }}</td>
-                    <td>{{ item.subject.name }}</td>
-                    <td>
-                        {% if item.is_required %}
-                            Required
-                        {% else %}
-                            Optional
-                        {% endif %}
-                    </td>
-                    <td>
-                        <a href="{% url 'edit_curriculum_requirement' item.pk %}">
-                            Edit
-                        </a>
+        <a class="nav-link" href="{% url 'admin_attendance_report' %}">
+            Attendance Reports
+        </a>
 
-                        <form
-                            method="post"
-                            action="{% url 'remove_curriculum_assignment' item.pk %}"
-                        >
-                            {% csrf_token %}
-                            <button
-                                type="submit"
-                                onclick="return confirm('Remove this curriculum assignment?');"
-                            >
-                                Remove
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="5">No curriculum assignments yet.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="nav-label">Navigation</div>
 
-        <p><a href="{% url 'school_home' %}">Back to School Portal</a></p>
+        <a class="nav-link" href="{% url 'school_home' %}">
+            Back to School Portal
+        </a>
+    </aside>
+
+    <main class="content">
+
+        <header class="topbar">
+            <div>
+                <h1>Curriculum Management</h1>
+                <p class="subtitle">{{ school.name }} | Academic Administration</p>
+            </div>
+
+            <span class="badge">{{ school.get_status_display }}</span>
+        </header>
+
+        <section class="summary">
+            <div class="stat">
+                <div class="stat-number">{{ academic_years|length }}</div>
+                <div class="stat-label">Academic Years</div>
+            </div>
+
+            <div class="stat">
+                <div class="stat-number">{{ classes|length }}</div>
+                <div class="stat-label">Classes</div>
+            </div>
+
+            <div class="stat">
+                <div class="stat-number">{{ curriculum|length }}</div>
+                <div class="stat-label">Curriculum Assignments</div>
+            </div>
+        </section>
+
+        <section class="configuration">
+            <div class="panel">
+                <h2>Academic Years</h2>
+                <p class="panel-description">
+                    Academic years configured for this school.
+                </p>
+
+                <ul class="record-list">
+                    {% for year in academic_years %}
+                        <li>
+                            {{ year.name }}
+                            {% if year.is_current %}
+                                <strong style="color:#15803d;">(Current)</strong>
+                            {% endif %}
+                        </li>
+                    {% empty %}
+                        <li>No academic years configured.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="panel">
+                <h2>Classes</h2>
+                <p class="panel-description">
+                    Classes available for curriculum assignments.
+                </p>
+
+                <ul class="record-list">
+                    {% for class in classes %}
+                        <li>{{ class.name }}</li>
+                    {% empty %}
+                        <li>No classes configured.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Assign Subject to Class</h2>
+            <p class="panel-description">
+                Select an academic year, class and subject to create
+                a curriculum assignment.
+            </p>
+
+            <form method="post" class="assignment-form">
+                {% csrf_token %}
+                {{ form.non_field_errors }}
+                {{ form.as_p }}
+
+                <button type="submit" class="btn">
+                    Save Curriculum Assignment
+                </button>
+            </form>
+        </section>
+
+        <section class="panel">
+            <h2>Curriculum Assignments</h2>
+            <p class="panel-description">
+                Review and manage the school's subject assignments.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Academic Year</th>
+                            <th>Class</th>
+                            <th>Subject</th>
+                            <th>Type</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in curriculum %}
+                        <tr>
+                            <td>{{ item.academic_year.name }}</td>
+                            <td>{{ item.class_stream.name }}</td>
+                            <td>{{ item.subject.name }}</td>
+                            <td>
+                                {% if item.is_required %}
+                                    Required
+                                {% else %}
+                                    Optional
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="actions">
+                                    <a class="action-link"
+                                       href="{% url 'edit_curriculum_requirement' item.pk %}">
+                                        Edit
+                                    </a>
+
+                                    <form method="post"
+                                          action="{% url 'remove_curriculum_assignment' item.pk %}">
+                                        {% csrf_token %}
+                                        <button type="submit"
+                                                class="btn btn-danger"
+                                                onclick="return confirm('Remove this curriculum assignment?');">
+                                            Remove
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="empty">
+                                No curriculum assignments yet.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer class="footer">
+            School Management System &copy; {% now "Y" %}
+        </footer>
+
     </main>
+</div>
 </body>
 </html>
