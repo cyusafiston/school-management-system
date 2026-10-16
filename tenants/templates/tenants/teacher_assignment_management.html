@@ -133,6 +133,7 @@
                             <tr>
                                 <td>
                                     {{ assignment.teacher.get_full_name|default:assignment.teacher.username }}
+                                    <a href="{% url 'admin_reassign_teacher' assignment.pk %}">Reassign</a>
                                 </td>
                                 <td>{{ assignment.current_class.name }}</td>
                                 <td>{{ assignment.subject.name }}</td>

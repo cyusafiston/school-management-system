@@ -36,6 +36,8 @@ from django.contrib.auth.views import LogoutView
 from django.urls import path
 
 from core import views
+from tenants import admin_views
+from tenants.admin_forms import SchoolPasswordResetForm
 from tenants.platform_admin import configure_platform_admin
 from tenants.views import school_home, register_school, academic_setup
 
@@ -62,6 +64,20 @@ urlpatterns = [
     path("school/student/homework/<int:homework_id>/download/", views.student_homework_download, name="student_homework_download"),
     path("school/student/notices/", views.student_notices, name="student_notices"),
     path("school/student/schedule/", views.student_schedule, name="student_schedule"),
+
+    path("school/administration/students/", admin_views.students, name="admin_students"),
+    path("school/administration/students/<int:student_id>/", admin_views.student_detail, name="admin_student_detail"),
+    path("school/administration/students/<int:student_id>/access/", admin_views.student_access, name="admin_student_access"),
+    path("school/administration/assignments/<int:assignment_id>/reassign/", admin_views.reassign_teacher, name="admin_reassign_teacher"),
+    path("school/administration/notices/", admin_views.notices, name="admin_notices"),
+    path("school/administration/notices/<int:notice_id>/", admin_views.notices, name="admin_notice_edit"),
+    path("school/administration/staff/", admin_views.staff, name="admin_staff"),
+    path("school/administration/staff/<int:membership_id>/", admin_views.staff_edit, name="admin_staff_edit"),
+    path("school/administration/accounts/<int:membership_id>/recover/", admin_views.account_recovery, name="admin_account_recovery"),
+    path("school/administration/periods/", admin_views.academic_periods, name="admin_periods"),
+    path("school/administration/periods/<int:term_id>/activate/", admin_views.activate_term, name="admin_activate_term"),
+    path("school/administration/rollover/", admin_views.rollover, name="admin_rollover"),
+    path("school/administration/academic/<str:kind>/<int:record_id>/", admin_views.academic_edit, name="admin_academic_edit"),
 
     # SECURED SCHOOL TEACHER DASHBOARD
     path(
@@ -159,6 +175,7 @@ urlpatterns = [
     path(
         "forgot-password/",
         auth_views.PasswordResetView.as_view(
+            form_class=SchoolPasswordResetForm,
             template_name="core/password_reset_form.html",
             email_template_name="core/password_reset_email.html",
             subject_template_name="core/password_reset_subject.txt",
@@ -177,7 +194,7 @@ urlpatterns = [
 
     path(
         "reset/<uidb64>/<token>/",
-        auth_views.PasswordResetConfirmView.as_view(
+        admin_views.SchoolPasswordResetConfirmView.as_view(
             template_name="core/password_reset_confirm.html",
             success_url="/reset-password-complete/",
         ),

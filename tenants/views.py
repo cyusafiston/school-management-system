@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 
 import uuid
 
@@ -189,6 +190,11 @@ def remove_curriculum_assignment(request, assignment_id):
         subject__school=context.school,
     )
 
+    from core.models import Grade
+    if Grade.objects.filter(school=context.school, subject=assignment.subject,
+                            term__academic_year=assignment.academic_year).exists():
+        messages.error(request, "Recorded grades prevent removing this curriculum subject.")
+        return redirect("curriculum_management")
     assignment.delete()
 
     messages.success(
@@ -228,12 +234,16 @@ def edit_curriculum_requirement(request, assignment_id):
         )
 
         if form.is_valid():
-            form.save()
-            messages.success(
-                request,
-                "Curriculum requirement updated successfully."
-            )
-            return redirect("curriculum_management")
+            from core.models import Grade
+            if "is_required" in form.changed_data and Grade.objects.filter(
+                school=context.school, subject=assignment.subject,
+                term__academic_year=assignment.academic_year,
+            ).exists():
+                form.add_error(None, "Recorded grades prevent changing the curriculum requirement.")
+            else:
+                form.save()
+                messages.success(request, "Curriculum requirement updated successfully.")
+                return redirect("curriculum_management")
     else:
         form = ClassSubjectRequirementForm(
             school=context.school,
@@ -284,6 +294,9 @@ def academic_setup(request):
             if class_form.is_valid():
                 try:
                     with transaction.atomic():
+                        from tenants.admin_services import lock_school
+                        lock_school(school)
+                        class_form.clean_name()
                         class_form.save()
                 except (IntegrityError, ValidationError):
                     class_form.add_error(
@@ -300,6 +313,9 @@ def academic_setup(request):
             if subject_form.is_valid():
                 try:
                     with transaction.atomic():
+                        from tenants.admin_services import lock_school
+                        lock_school(school)
+                        subject_form.clean_name()
                         subject_form.save()
                 except (IntegrityError, ValidationError):
                     subject_form.add_error(
@@ -341,65 +357,23 @@ def academic_setup(request):
 @login_required
 def teacher_management(request):
     """School administrators manage teachers in their own school."""
-    from django.contrib import messages
-    from django.db import IntegrityError, transaction
-    from django.shortcuts import redirect, render
-
-    from tenants.access import (
-        require_school_context,
-        require_school_role,
-    )
-    from tenants.forms import TeacherRegistrationForm
-    from tenants.models import SchoolMembership
-
-    context = require_school_context(request.user)
-    require_school_role(context, "administrator")
-
-    school = context.school
-
+    from tenants.admin_views import staff
     if request.method == "POST":
-        form = TeacherRegistrationForm(
-            request.POST,
-            school=school,
-        )
+        data = request.POST.copy()
+        data["role"] = "teacher"
+        request.POST = data
+        return staff(request)
+    context = require_school_context(request.user)
+    from tenants.access import require_school_role
+    require_school_role(context, "administrator")
+    from tenants.admin_forms import StaffInvitationForm
+    teachers = SchoolMembership.objects.filter(school=context.school, role="teacher").select_related("user")
+    invitation = StaffInvitationForm(initial={"role": "teacher"})
+    invitation.fields["role"].choices = [("teacher", "Teacher")]
+    return render(request, "tenants/teacher_management.html", {
+        "school": context.school, "form": invitation, "teachers": teachers,
+    })
 
-        if form.is_valid():
-            try:
-                with transaction.atomic():
-                    form.save()
-            except IntegrityError:
-                form.add_error(
-                    "username",
-                    "This username is unavailable. Please try another.",
-                )
-            else:
-                messages.success(
-                    request,
-                    "Teacher account created successfully.",
-                )
-                return redirect("teacher_management")
-    else:
-        form = TeacherRegistrationForm(school=school)
-
-    teachers = (
-        SchoolMembership.objects
-        .filter(
-            school=school,
-            role=SchoolMembership.Role.TEACHER,
-        )
-        .select_related("user")
-        .order_by("user__first_name", "user__username")
-    )
-
-    return render(
-        request,
-        "tenants/teacher_management.html",
-        {
-            "school": school,
-            "form": form,
-            "teachers": teachers,
-        },
-    )
 
 
 # STEP 906 - TENANT-SAFE TEACHER ASSIGNMENT MANAGEMENT
@@ -431,8 +405,13 @@ def teacher_assignment_management(request):
         if form.is_valid():
             try:
                 with transaction.atomic():
+                    from tenants.admin_services import lock_school
+                    lock_school(school)
+                    form.full_clean()
+                    if not form.is_valid():
+                        raise ValidationError("Duplicate or invalid teacher assignment.")
                     form.save()
-            except IntegrityError:
+            except (IntegrityError, ValidationError):
                 form.add_error(
                     None,
                     "The assignment could not be saved. "
@@ -449,7 +428,8 @@ def teacher_assignment_management(request):
 
     assignments = (
         TeacherAssignment.objects
-        .filter(school=school)
+        .filter(school=school, subject__school=school, current_class__school=school,
+                term__school=school, term__academic_year__school=school)
         .select_related(
             "teacher",
             "subject",

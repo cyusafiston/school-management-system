@@ -254,6 +254,11 @@
 
         {% if school_role == "administrator" %}
 
+            <a class="nav-link" href="{% url 'admin_students' %}">Students & accounts</a>
+            <a class="nav-link" href="{% url 'admin_staff' %}">Staff memberships</a>
+            <a class="nav-link" href="{% url 'admin_periods' %}">Academic years & terms</a>
+            <a class="nav-link" href="{% url 'admin_rollover' %}">Enrollment roll forward</a>
+            <a class="nav-link" href="{% url 'admin_notices' %}">School notices</a>
             <a class="nav-link" href="{% url 'academic_setup' %}">
                 Academic Setup
             </a>

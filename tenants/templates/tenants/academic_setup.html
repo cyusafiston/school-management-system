@@ -184,7 +184,7 @@
                             <thead><tr><th>Class</th><th>Code</th></tr></thead>
                             <tbody>
                                 {% for item in classes %}
-                                    <tr><td>{{ item.name }}</td><td>{{ item.code }}</td></tr>
+                                    <tr><td>{{ item.name }} <a href="{% url 'admin_academic_edit' 'class' item.pk %}">Edit</a></td><td>{{ item.code }}</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -205,7 +205,7 @@
                             <tbody>
                                 {% for item in subjects %}
                                     <tr>
-                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.name }} <a href="{% url 'admin_academic_edit' 'subject' item.pk %}">Edit</a></td>
                                         <td>{{ item.max_cat_marks }}</td>
                                         <td>{{ item.max_exam_marks }}</td>
                                     </tr>
