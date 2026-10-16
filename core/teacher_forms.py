@@ -3,6 +3,7 @@ from pathlib import Path
 
 from django import forms
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import UploadedFile
 
 from core.models import Homework
 
@@ -15,7 +16,7 @@ class HomeworkForm(forms.ModelForm):
 
     def clean_file(self):
         attachment = self.cleaned_data.get('file')
-        if attachment and hasattr(attachment, 'size'):
+        if isinstance(attachment, UploadedFile):
             if attachment.size > 10 * 1024 * 1024:
                 raise ValidationError('Attachments must be 10 MB or smaller.')
             if Path(attachment.name).suffix.lower() not in {'.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg'}:

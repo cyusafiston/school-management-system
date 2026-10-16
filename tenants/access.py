@@ -60,6 +60,8 @@ def require_school_context(user, *, school_id: Optional[int] = None) -> SchoolCo
             raise PermissionDenied("Select a school before continuing.")
         membership = matches[0]
 
+    if membership.role not in SchoolMembership.Role.values:
+        raise PermissionDenied("School membership role requires operator review.")
     return SchoolContext(school=membership.school, membership=membership)
 
 

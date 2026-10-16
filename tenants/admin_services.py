@@ -52,7 +52,9 @@ def queue_setup_email(request, user):
     """Send only to the saved email after successful transaction commit."""
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-    link = request.build_absolute_uri(reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token}))
+    path = reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
+    origin = getattr(settings, 'ACCOUNT_PUBLIC_ORIGIN', '').rstrip('/')
+    link = origin + path if origin else request.build_absolute_uri(path)
     recipient = user.email
     def deliver():
         deliver_account_mail('Set up or recover your school account',

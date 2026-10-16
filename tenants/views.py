@@ -39,6 +39,11 @@ def school_home(request):
     )
 
 
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.debug import sensitive_post_parameters
+
+@sensitive_post_parameters('password1', 'password2')
+@require_http_methods(['GET', 'POST'])
 def register_school(request):
     """Register a school application awaiting platform approval."""
     if request.user.is_authenticated:
@@ -48,32 +53,40 @@ def register_school(request):
         form = SchoolRegistrationForm(request.POST)
 
         if form.is_valid():
-            with transaction.atomic():
-                user = form.save(commit=False)
-                user.is_staff = False
-                user.is_superuser = False
-                user.is_active = True
-                user.save()
+            from django.db import IntegrityError
+            from .audit import audit_event
+            try:
+                with transaction.atomic():
+                    user = form.save(commit=False)
+                    user.is_staff = False
+                    user.is_superuser = False
+                    user.is_active = True
+                    user.save()
 
-                school_name = form.cleaned_data["school_name"]
-                base_slug = slugify(school_name)[:170] or "school"
+                    school_name = form.cleaned_data["school_name"]
+                    base_slug = slugify(school_name)[:170] or "school"
 
-                school = School.objects.create(
-                    name=school_name,
-                    slug=f"{base_slug}-{uuid.uuid4().hex[:12]}",
-                    email=form.cleaned_data.get("school_email", ""),
-                    phone_number=form.cleaned_data.get("school_phone", ""),
-                    address=form.cleaned_data.get("school_address", ""),
-                    status=School.Status.PENDING,
-                    created_by=user,
-                )
+                    school = School.objects.create(
+                        name=school_name,
+                        slug=f"{base_slug}-{uuid.uuid4().hex[:12]}",
+                        email=form.cleaned_data.get("school_email", ""),
+                        phone_number=form.cleaned_data.get("school_phone", ""),
+                        address=form.cleaned_data.get("school_address", ""),
+                        status=School.Status.PENDING,
+                        created_by=user,
+                    )
 
-                SchoolMembership.objects.create(
-                    school=school,
-                    user=user,
-                    role=SchoolMembership.Role.ADMINISTRATOR,
-                    is_active=True,
-                )
+                    SchoolMembership.objects.create(
+                        school=school,
+                        user=user,
+                        role=SchoolMembership.Role.ADMINISTRATOR,
+                        is_active=True,
+                    )
+                    audit_event('school.application', actor=user, school_id=school.pk,
+                                model='School', object_id=school.pk, changes={'status': 'pending'})
+            except IntegrityError:
+                form.add_error(None, 'The application could not be saved. Check the account details.')
+                return render(request, 'tenants/register_school.html', {'form': form})
 
             messages.success(
                 request,

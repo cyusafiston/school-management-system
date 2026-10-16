@@ -77,6 +77,15 @@ class TermForm(forms.ModelForm):
 
 
 class SchoolPasswordResetForm(PasswordResetForm):
+    def save(self, *args, **kwargs):
+        from django.conf import settings
+        from urllib.parse import urlparse
+        origin = getattr(settings, 'ACCOUNT_PUBLIC_ORIGIN', '')
+        if origin:
+            kwargs['domain_override'] = urlparse(origin).netloc
+            kwargs['use_https'] = True
+        return super().save(*args, **kwargs)
+
     def send_mail(self, subject_template_name, email_template_name, context,
                   from_email, to_email, html_email_template_name=None):
         from django.template.loader import render_to_string

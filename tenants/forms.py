@@ -6,6 +6,14 @@ from .models import School
 
 
 class SchoolRegistrationForm(UserCreationForm):
+    email = forms.EmailField(required=True)
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].strip().lower()
+        if get_user_model().objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('This email cannot be used for a new school application.')
+        return email
+
     school_name = forms.CharField(max_length=200)
     school_email = forms.EmailField(required=False)
     school_phone = forms.CharField(max_length=30, required=False)

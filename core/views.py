@@ -1,4 +1,4 @@
-from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.http import require_POST, require_GET, require_http_methods
 from django.core.exceptions import PermissionDenied
 from tenants.access import require_school_context
 from decimal import Decimal, InvalidOperation
@@ -115,6 +115,10 @@ def teacher_can_access_class(user, class_stream):
 
 
 
+from django.views.decorators.debug import sensitive_post_parameters
+
+@sensitive_post_parameters('password')
+@require_http_methods(['GET', 'POST'])
 def custom_login_view(request):
     if request.user.is_authenticated:
         logout(request)
@@ -1192,6 +1196,10 @@ def teacher_homework_view(request, assignment_id, homework_id=None):
         record = form.save(commit=False)
         record.school = assignment.school
         record.assignment = assignment
+        if 'file' in request.FILES:
+            import uuid
+            from pathlib import Path
+            record.file.name = f'schools/{assignment.school_id}/homework/{uuid.uuid4().hex}{Path(record.file.name).suffix.lower()}'
         record.save()
         messages.success(request, "Homework saved successfully.")
         return redirect("teacher_homework", assignment_id=assignment.pk)

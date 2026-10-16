@@ -239,7 +239,7 @@
     </style>
 </head>
 
-<body>
+<body>{% if school_role == 'administrator' %}<p><a href="{% url 'school_setup_checklist' %}">First school setup checklist</a></p>{% endif %}
 <div class="layout">
 
     <aside class="sidebar">

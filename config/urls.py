@@ -399,3 +399,13 @@ urlpatterns += [
     path("school/finance/students/<int:student_id>/statement/", finance.ledger, name="student_financial_statement"),
     path("student/finances/", finance.ledger, name="student_finances"),
 ]
+
+from tenants import platform_views
+urlpatterns += [path("platform/schools/", platform_views.schools, name="platform_schools")]
+
+from tenants import pilot_views
+urlpatterns += [
+    path("health/live/", pilot_views.liveness, name="health_live"),
+    path("platform/readiness/", pilot_views.readiness, name="platform_readiness"),
+    path("school/setup/", pilot_views.setup_checklist, name="school_setup_checklist"),
+]

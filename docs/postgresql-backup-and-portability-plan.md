@@ -7,6 +7,15 @@ accessed. No backup, restore, provider creation or hosting change was performed.
 A source recovery ZIP is not a database backup. Existing database backups remain
 **unverified** until an actual restore and reconciliation succeed.
 
+## Pilot milestone status
+
+The platform/pilot milestone adds guarded loopback-only synthetic PostgreSQL test
+settings and concurrency regressions. PostgreSQL could not be started in this
+workspace; these tests remain explicitly skipped in SQLite, not verified. No
+production backup or restore was accessed or performed. The October 28 verified
+restore target still depends on explicit approval and an appropriate backup and
+isolated restore destination. Do not substitute a source recovery archive for it.
+
 ## Deadline and ownership
 
 Aim for the first approved, encrypted backup and successful isolated restore by

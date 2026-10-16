@@ -1,9 +1,10 @@
 
 from django.contrib import admin, messages
-from django.utils import timezone
 from unfold.admin import ModelAdmin, TabularInline
 
 from .models import School, SchoolMembership
+from .platform_services import transition_school
+from django.core.exceptions import ValidationError
 
 
 class SchoolMembershipInline(TabularInline):
@@ -30,6 +31,7 @@ class SchoolAdmin(ModelAdmin):
     ordering = ("-created_at",)
 
     readonly_fields = (
+        "status",
         "created_by",
         "reviewed_by",
         "created_at",
@@ -44,6 +46,7 @@ class SchoolAdmin(ModelAdmin):
         "approve_schools",
         "reject_schools",
         "suspend_schools",
+        "reactivate_schools",
     )
 
     def has_module_permission(self, request):
@@ -52,63 +55,39 @@ class SchoolAdmin(ModelAdmin):
     def has_view_permission(self, request, obj=None):
         return request.user.is_active and request.user.is_superuser
 
-    def has_add_permission(self, request):
-        return request.user.is_active and request.user.is_superuser
-
     def has_change_permission(self, request, obj=None):
         return request.user.is_active and request.user.is_superuser
 
+    def has_add_permission(self, request):
+        return False  # Use the validated public application workflow.
+
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_active and request.user.is_superuser
+        return False  # Suspend rather than erase school history.
 
-    def save_model(self, request, obj, form, change):
-        if not change:
-            obj.created_by = request.user
+    def lifecycle(self, request, queryset, action):
+        for school_id in queryset.values_list('pk', flat=True):
+            try:
+                transition_school(actor=request.user, school_id=school_id, action=action, request=request)
+            except ValidationError as exc:
+                self.message_user(request, ' '.join(exc.messages), messages.ERROR)
+            else:
+                self.message_user(request, 'School lifecycle action completed.', messages.SUCCESS)
 
-        if change and "status" in form.changed_data:
-            obj.reviewed_by = request.user
-            obj.reviewed_at = timezone.now()
-
-        super().save_model(request, obj, form, change)
-
-    @admin.action(description="Approve selected schools")
+    @admin.action(description="Approve pending schools")
     def approve_schools(self, request, queryset):
-        count = queryset.update(
-            status=School.Status.APPROVED,
-            reviewed_by=request.user,
-            reviewed_at=timezone.now(),
-        )
-        self.message_user(
-            request,
-            f"{count} school(s) approved.",
-            messages.SUCCESS,
-        )
+        self.lifecycle(request, queryset, 'approve')
 
-    @admin.action(description="Reject selected schools")
+    @admin.action(description="Reject pending schools")
     def reject_schools(self, request, queryset):
-        count = queryset.update(
-            status=School.Status.REJECTED,
-            reviewed_by=request.user,
-            reviewed_at=timezone.now(),
-        )
-        self.message_user(
-            request,
-            f"{count} school(s) rejected.",
-            messages.SUCCESS,
-        )
+        self.lifecycle(request, queryset, 'reject')
 
-    @admin.action(description="Suspend selected schools")
+    @admin.action(description="Suspend approved schools")
     def suspend_schools(self, request, queryset):
-        count = queryset.update(
-            status=School.Status.SUSPENDED,
-            reviewed_by=request.user,
-            reviewed_at=timezone.now(),
-        )
-        self.message_user(
-            request,
-            f"{count} school(s) suspended.",
-            messages.SUCCESS,
-        )
+        self.lifecycle(request, queryset, 'suspend')
+
+    @admin.action(description="Reactivate suspended schools")
+    def reactivate_schools(self, request, queryset):
+        self.lifecycle(request, queryset, 'reactivate')
 
 
 @admin.register(SchoolMembership)
