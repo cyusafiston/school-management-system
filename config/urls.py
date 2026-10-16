@@ -37,7 +37,7 @@ from django.urls import path
 
 from core import views
 from tenants.platform_admin import configure_platform_admin
-from tenants.views import school_home, register_school
+from tenants.views import school_home, register_school, academic_setup
 
 
 # Restrict the existing Django admin to platform superusers.
@@ -183,6 +183,12 @@ urlpatterns = [
         "dashboard/redirect/",
         views.role_based_redirect_view,
         name="role_redirect",
+    ),
+
+    path(
+        "school/academic-setup/",
+        academic_setup,
+        name="academic_setup",
     ),
 
     # ============================================================

@@ -254,6 +254,10 @@
 
         {% if school_role == "administrator" %}
 
+            <a class="nav-link" href="{% url 'academic_setup' %}">
+                Academic Setup
+            </a>
+
             <a class="nav-link" href="{% url 'curriculum_management' %}">
                 Curriculum
             </a>
@@ -320,6 +324,16 @@
             <h2 class="section-title">School Administration</h2>
 
             <div class="cards">
+
+                <a class="card" href="{% url 'academic_setup' %}">
+                    <div class="card-icon">&#127979;</div>
+                    <h3>Academic Setup</h3>
+                    <p>
+                        Create and manage your school's classes and subjects
+                        before configuring curriculum assignments.
+                    </p>
+                    <span class="card-action">Open Academic Setup &rarr;</span>
+                </a>
 
                 <a class="card" href="{% url 'curriculum_management' %}">
                     <div class="card-icon">&#128218;</div>

@@ -249,3 +249,88 @@ def edit_curriculum_requirement(request, assignment_id):
             "form": form,
         },
     )
+
+
+
+# ============================================================
+# SCHOOL ACADEMIC SETUP
+# ============================================================
+
+@login_required
+def academic_setup(request):
+    """Manage classes and subjects within one approved school."""
+    from django.core.exceptions import ValidationError
+    from django.db import IntegrityError, transaction
+    from django.shortcuts import render, redirect
+
+    from core.models import ClassStream, Subject
+    from tenants.access import require_school_context, require_school_role
+    from tenants.forms import ClassStreamForm, SubjectSetupForm
+
+    context = require_school_context(request.user)
+    require_school_role(context, "administrator")
+
+    school = context.school
+
+    class_form = ClassStreamForm(school=school)
+    subject_form = SubjectSetupForm(school=school)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        if action == "create_class":
+            class_form = ClassStreamForm(request.POST, school=school)
+
+            if class_form.is_valid():
+                try:
+                    with transaction.atomic():
+                        class_form.save()
+                except (IntegrityError, ValidationError):
+                    class_form.add_error(
+                        None,
+                        "Unable to create this class. Please check the details."
+                    )
+                else:
+                    messages.success(request, "Class created successfully.")
+                    return redirect("academic_setup")
+
+        elif action == "create_subject":
+            subject_form = SubjectSetupForm(request.POST, school=school)
+
+            if subject_form.is_valid():
+                try:
+                    with transaction.atomic():
+                        subject_form.save()
+                except (IntegrityError, ValidationError):
+                    subject_form.add_error(
+                        None,
+                        "Unable to create this subject. Please check the details."
+                    )
+                else:
+                    messages.success(request, "Subject created successfully.")
+                    return redirect("academic_setup")
+
+        else:
+            from django.http import HttpResponseBadRequest
+            return HttpResponseBadRequest("Invalid academic setup action.")
+
+    classes = ClassStream.objects.filter(
+        school=school
+    ).order_by("name")
+
+    subjects = Subject.objects.filter(
+        school=school
+    ).order_by("name")
+
+    return render(
+        request,
+        "tenants/academic_setup.html",
+        {
+            "school": school,
+            "school_role": context.role,
+            "class_form": class_form,
+            "subject_form": subject_form,
+            "classes": classes,
+            "subjects": subjects,
+        },
+    )
